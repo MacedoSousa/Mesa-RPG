@@ -1,0 +1,44 @@
+# Dependências
+node_modules/
+jspm_packages/
+
+# Variáveis de ambiente e segredos
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Builds e Compilações (TypeScript / Web)
+dist/
+build/
+out/
+.cache/
+*.tsbuildinfo
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Sistema Operacional / Editor (macOS, Windows, Linux)
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# Godot (caso decida usar no client-host futuramente)
+.godot/
+.import/
+export_presets.cfg
