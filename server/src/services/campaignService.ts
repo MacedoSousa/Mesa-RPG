@@ -151,7 +151,7 @@ export const CampaignService = {
     await this.requireMaster(campaignId, actor);
     const m = await GameMap.findOne({ where: { id: mapId, campaignId } });
     if (!m) throw new HttpError(404, 'Mapa não encontrado');
-    return { id: m.id, name: m.name, preset: m.preset, width: m.width, height: m.height, tiles: m.tiles };
+    return { id: m.id, name: m.name, preset: m.preset, width: m.width, height: m.height, tiles: m.tiles, ...(m.meta ?? {}) };
   },
 
   async createMap(campaignId: string, actor: Actor, input: unknown) {
@@ -168,6 +168,7 @@ export const CampaignService = {
     }
     const row = await GameMap.create({
       campaignId, name: map.name, preset: map.preset ?? null, width: map.width, height: map.height, tiles: map.tiles, createdBy: actor.userId,
+      meta: { mood: map.mood, seed: map.seed, kind: map.kind },
     });
     return { ...map, id: row.id };
   },
@@ -177,7 +178,7 @@ export const CampaignService = {
     const map = mapSchema.parse(input);
     const row = await GameMap.findOne({ where: { id: mapId, campaignId } });
     if (!row) throw new HttpError(404, 'Mapa não encontrado');
-    await row.update({ name: map.name, width: map.width, height: map.height, tiles: map.tiles });
+    await row.update({ name: map.name, width: map.width, height: map.height, tiles: map.tiles, meta: { mood: map.mood, seed: map.seed, kind: map.kind } });
     return { ...map, id: row.id };
   },
 

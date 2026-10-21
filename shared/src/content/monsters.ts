@@ -151,6 +151,70 @@ export const MONSTERS: Record<string, MonsterDef> = {
     attacks: [{ name: 'Adaga Forjada', toHit: 4, damage: '1d6+2', damageType: 'cortante', range: 1 }],
     resistances: ['frio'],
   },
+  erinia: {
+    key: 'erinia', label: 'Fúria (Erínia)', size: 'medio', ac: 13, hp: '9d8', speed: 12, cr: '3', xp: 700,
+    description: 'Velha de asas de morcego e chicote em brasa, enviada para punir quem quebrou um juramento.',
+    lore: 'Alecto, Megera e Tisífone servem a Hades e perseguem os culpados até o fim do mundo.',
+    abilities: ab(14, 15, 12, 10, 14, 13),
+    attacks: [
+      { name: 'Chicote Flamejante', toHit: 5, damage: '2d6+2', damageType: 'fogo', range: 2 },
+      { name: 'Garras', toHit: 5, damage: '1d8+2', damageType: 'cortante', range: 1 },
+    ],
+    resistances: ['fogo', 'necrotico'],
+    traits: ['Voa: ignora terreno difícil', 'Persegue: sabe sempre onde está o alvo do seu juramento'],
+  },
+  equidna: {
+    key: 'equidna', label: 'Equidna', size: 'grande', ac: 14, hp: '12d10+24', speed: 9, cr: '5', xp: 1800,
+    description: 'Metade mulher, metade serpente: a Mãe dos Monstros, sempre acompanhada de um dos filhos.',
+    lore: 'Na Teogonia de Hesíodo, Equidna gerou com Tifão a Quimera, a Hidra, Cérbero e Ortro.',
+    abilities: ab(18, 14, 15, 12, 13, 16),
+    attacks: [
+      { name: 'Cauda Esmagadora', toHit: 7, damage: '2d8+4', damageType: 'concussao', range: 2 },
+      { name: 'Mordida Venenosa', toHit: 7, damage: '2d6+4', damageType: 'veneno', range: 1 },
+    ],
+    resistances: ['veneno'],
+  },
+  procrustes: {
+    key: 'procrustes', label: 'Procrustes', size: 'grande', ac: 13, hp: '10d10+30', speed: 9, cr: '4', xp: 1100,
+    description: 'Gigante sorridente que oferece descanso aos viajantes… e depois os "ajusta" à cama.',
+    lore: 'O bandido da estrada de Elêusis que esticava ou cortava suas vítimas, até Teseu lhe dar o mesmo fim.',
+    abilities: ab(20, 10, 16, 11, 10, 14),
+    attacks: [
+      { name: 'Martelo de Ajuste', toHit: 7, damage: '2d8+5', damageType: 'concussao', range: 1 },
+      { name: 'Puxão', toHit: 7, damage: '1d6+5', damageType: 'concussao', range: 2 },
+    ],
+    traits: ['Lisonjeiro: um bom teste de Intuição revela a armadilha antes de deitar'],
+  },
+  aranha_automato: {
+    key: 'aranha_automato', label: 'Aranha Autômato', size: 'pequeno', ac: 15, hp: '3d6+3', speed: 9, cr: '1/4', xp: 50,
+    description: 'Aranha de bronze do tamanho de um gato, com olhos de rubi e um zumbido de engrenagens.',
+    lore: 'Hefesto construía servos e armadilhas mecânicas; sua rede de bronze prendeu até Ares e Afrodite.',
+    abilities: ab(8, 16, 12, 3, 10, 3),
+    attacks: [{ name: 'Picada de Bronze', toHit: 5, damage: '1d4+3', damageType: 'perfurante', range: 1 }],
+    resistances: ['veneno', 'psiquico'],
+    traits: ['Enxame: aparecem em grupos de 4 a 8'],
+  },
+  cerbero: {
+    key: 'cerbero', label: 'Cérbero', size: 'enorme', ac: 15, hp: '15d12+60', speed: 12, cr: '8', xp: 3900,
+    description: 'O cão de três cabeças que guarda os portões do Mundo Inferior. Ninguém sai sem permissão.',
+    lore: 'Héracles o arrastou para fora no último trabalho; Orfeu o adormeceu com música.',
+    abilities: ab(22, 12, 19, 3, 14, 8),
+    attacks: [{ name: 'Três Mordidas', toHit: 9, damage: '2d10+6', damageType: 'perfurante', range: 1 }],
+    resistances: ['fogo', 'necrotico'],
+    traits: ['Desafio de esperteza, não de força: música, uma bola ou um petisco o distraem (teste CD 14)'],
+  },
+  avatar_ares: {
+    key: 'avatar_ares', label: 'Ares (forma mortal)', size: 'medio', ac: 18, hp: '12d8+36', speed: 9, cr: '6', xp: 2300,
+    description: 'Motoqueiro enorme de jaqueta de couro e óculos escuros, com fogo no lugar dos olhos.',
+    lore: 'O deus da guerra, temido até pelos outros olímpicos. Um corte que faça sangrar seu icor o obriga a recuar.',
+    abilities: ab(20, 14, 17, 12, 12, 16),
+    attacks: [
+      { name: 'Espada da Guerra', toHit: 8, damage: '2d8+5', damageType: 'cortante', range: 1 },
+      { name: 'Lança Arremessada', toHit: 8, damage: '1d10+5', damageType: 'perfurante', range: 6, ranged: true },
+    ],
+    resistances: ['fogo', 'cortante'],
+    traits: ['Duelo divino: quando cair a 0 PV, ele recua e amaldiçoa quem o feriu (não morre)'],
+  },
 };
 
 export type MonsterKey = keyof typeof MONSTERS;

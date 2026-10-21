@@ -1,9 +1,10 @@
 import { SequelizeStorage, Umzug } from 'umzug';
 import { sequelize } from '../config/database';
 import * as m0001 from './migrations/0001_initial';
+import * as m0002 from './migrations/0002_portrait';
 
 /** Migrações em ordem. Para criar uma nova: adicione o arquivo em migrations/ e registre aqui. */
-const MIGRATIONS = [m0001];
+const MIGRATIONS = [m0001, m0002];
 
 export const migrator = new Umzug({
   migrations: MIGRATIONS.map((m) => ({ name: m.name, up: m.up, down: m.down })),

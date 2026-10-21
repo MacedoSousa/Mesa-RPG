@@ -8,3 +8,6 @@ export * from './ErrorBoundary';
 export * from './PromoteMaster';
 export * from './tokenArt';
 export * from './TokenAvatar';
+export * from './mapRender';
+export * from './portrait';
+export * from './PortraitEditor';

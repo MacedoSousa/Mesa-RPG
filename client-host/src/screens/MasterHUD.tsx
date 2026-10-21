@@ -5,11 +5,12 @@ import {
   Badge, Button, LogFeed, MapCanvas, Modal, Spinner, Tabs, api, cx, navigate, toast, useTable, type Cell,
 } from '@mesa/common';
 import { CombatPanel } from '../panels/CombatPanel';
+import { TablePanel } from '../panels/TablePanel';
 import { ChaptersPanel, QuestsPanel } from '../panels/StoryPanels';
 import { MapPanel, MonstersPanel, PlayersPanel, SavesPanel } from '../panels/WorldPanels';
 import { toolLabel, type Tool } from '../tools';
 
-type Panel = 'combate' | 'capitulos' | 'quests' | 'monstros' | 'jogadores' | 'mapa' | 'saves';
+type Panel = 'combate' | 'testes' | 'capitulos' | 'quests' | 'monstros' | 'jogadores' | 'mapa' | 'saves';
 
 export function MasterHUD({ campaignId }: { campaignId: string }) {
   const { state, status, connect, disconnect, send } = useTable();
@@ -72,11 +73,21 @@ export function MasterHUD({ campaignId }: { campaignId: string }) {
         return void send({ type: 'map.element', x: cell.x, y: cell.y, radius: tool.radius, element: tool.element, damage: tool.damage || undefined });
       case 'damage':
         return void send({ type: 'map.damage', x: cell.x, y: cell.y, amount: tool.amount, damageType: tool.damageType });
+      case 'attack': {
+        if (!tokenId) return toast('Clique numa criatura para atacar', 'erro');
+        const ok = await send({ type: 'combat.attack', tokenId: tool.attackerId, targetId: tokenId, attackIndex: tool.attackIndex });
+        if (ok) setTool({ kind: 'select' });
+        return;
+      }
+      case 'chest':
+        if (await send({ type: 'chest.place', x: cell.x, y: cell.y, loot: tool.loot, dracmas: tool.dracmas, lockDc: tool.lockDc, tier: tool.tier })) setTool({ kind: 'select' });
+        return;
       case 'select': {
         if (tokenId && tokenId !== selected) {
           const isTurn = selectedToken && combat?.currentTokenId === selectedToken.id;
           const target = state!.tokens.find((t) => t.id === tokenId)!;
-          if (isTurn && selectedToken && target.kind !== selectedToken.kind) {
+          const hostile = selectedToken && (selectedToken.kind === 'monstro') !== (target.kind === 'monstro');
+          if (selectedToken && hostile && (isTurn || !combat)) {
             return void send({ type: 'combat.attack', tokenId: selectedToken.id, targetId: tokenId, attackIndex: 0 });
           }
           return setSelected(tokenId);
@@ -122,12 +133,13 @@ export function MasterHUD({ campaignId }: { campaignId: string }) {
             value={panel}
             onChange={setPanel}
             tabs={[
-              { key: 'combate', label: '⚔️ Combate' }, { key: 'capitulos', label: '📖 Fases' }, { key: 'quests', label: '📜 Quests' },
+              { key: 'combate', label: '⚔️ Combate' }, { key: 'testes', label: '🎯 Testes & 🎁' }, { key: 'capitulos', label: '📖 Fases' }, { key: 'quests', label: '📜 Quests' },
               { key: 'monstros', label: '👹 Monstros' }, { key: 'jogadores', label: '🧑‍🤝‍🧑 Jogadores' }, { key: 'mapa', label: '🗺️ Mapa' }, { key: 'saves', label: '💾 Saves' },
             ]}
           />
           <div className="min-h-0 flex-1 overflow-y-auto p-3">
-            {panel === 'combate' && <CombatPanel state={state} selectedId={selected} onSelect={setSelected} />}
+            {panel === 'combate' && <CombatPanel state={state} selectedId={selected} onSelect={setSelected} setTool={setTool} />}
+            {panel === 'testes' && <TablePanel state={state} selectedId={selected} setTool={setTool} />}
             {panel === 'capitulos' && <ChaptersPanel state={state} />}
             {panel === 'quests' && <QuestsPanel state={state} />}
             {panel === 'monstros' && <MonstersPanel tool={tool} setTool={setTool} />}
@@ -145,7 +157,7 @@ export function MasterHUD({ campaignId }: { campaignId: string }) {
             paintMode={tool.kind === 'paint'}
             onCellClick={(c, t) => void onCellClick(c, t)}
             onCellHover={setHover}
-            highlights={hover && tool.kind === 'element' ? areaCells(hover, tool.radius) : []}
+            highlights={hover && tool.kind === 'element' ? areaCells(hover, tool.radius) : tool.kind === 'attack' ? attackTargets(state, tool.attackerId, tool.attackIndex) : []}
           />
           <div className="pointer-events-none absolute left-2 top-2 rounded-lg bg-slate-950/80 px-3 py-1.5 text-sm">
             <span className={cx(tool.kind !== 'select' && 'text-amber-300')}>{toolLabel(tool)}</span>
@@ -174,6 +186,16 @@ export function MasterHUD({ campaignId }: { campaignId: string }) {
       <InviteModal open={qrOpen} onClose={() => setQrOpen(false)} joinCode={campaign?.joinCode ?? ''} />
     </div>
   );
+}
+
+function attackTargets(state: NonNullable<ReturnType<typeof useTable.getState>['state']>, attackerId: string, index: number) {
+  const a = state.tokens.find((t) => t.id === attackerId);
+  const atk = a?.attacks[index];
+  if (!a || !atk) return [];
+  const reach = atk.longRange ?? atk.range;
+  return state.tokens
+    .filter((t) => t.id !== a.id && !t.dead && Math.max(Math.abs(t.x - a.x), Math.abs(t.y - a.y)) <= reach)
+    .map((t) => ({ x: t.x, y: t.y, color: (t.kind === 'monstro') !== (a.kind === 'monstro') ? 0xff3b30 : 0xffcc00, alpha: 0.35 }));
 }
 
 function areaCells(c: Cell, r: number) {

@@ -174,6 +174,7 @@ function notifyLog(entries: LogEntry[]) {
   for (const e of entries) {
     if (e.type === 'dado') toast(e.text, 'dado');
     else if (e.type === 'turno' && e.text.startsWith('▶️')) toast(e.text, 'info');
-    else if (e.type === 'quest' || e.type === 'capitulo' || e.type === 'divino') toast(e.text, 'sucesso');
+    else if (e.type === 'quest' || e.type === 'capitulo' || e.type === 'divino' || e.type === 'recompensa') toast(e.text, 'sucesso');
+    else if (e.type === 'teste') toast(e.text, e.text.startsWith('❌') ? 'erro' : 'dado');
   }
 }

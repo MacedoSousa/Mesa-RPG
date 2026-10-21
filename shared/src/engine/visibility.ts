@@ -69,6 +69,14 @@ export function projectStateFor(state: TableState, viewer: Actor): ProjectedStat
           economy: Object.fromEntries(Object.entries(state.combat.economy).filter(([id]) => visibleIds.has(id))),
         }
       : null,
+    // Conteúdo e CD dos baús ficam no servidor; jogador só sabe se está trancado
+    map: {
+      ...state.map,
+      tiles: state.map.tiles.map((t) => (t.o && (t.o.loot || t.o.lockDc || t.o.dracmas)
+        ? { ...t, o: { type: t.o.type, hp: t.o.hp, ...(t.o.lockDc ? { locked: true } : {}) } }
+        : t)),
+    },
+    checks: (state.checks ?? []).map((c) => (c.secretDc ? { ...c, dc: 0 } : c)),
     sideQuests: state.sideQuests.filter((q) => !q.hidden),
     chapters: state.chapters.filter((c) => c.status !== 'pendente'),
     log: state.log.filter((e) => canSeeLog(e, viewer)),

@@ -1,11 +1,11 @@
 import 'pixi.js/unsafe-eval'; // compatível com a Content-Security-Policy do servidor (sem eval)
-import { Application, Container, Graphics, Sprite, Text } from 'pixi.js';
+import { Application, Container, DisplacementFilter, Graphics, Sprite, Text } from 'pixi.js';
 import { useEffect, useRef } from 'react';
-import {
-  CONDITIONS, OBJECTS, SURFACES, TERRAIN, type ProjectedState, type Tile,
-} from '@mesa/shared';
+import { CONDITIONS, SURFACES, type ProjectedState } from '@mesa/shared';
 import { useTable, type FxEvent } from './stores';
 import { artKeyFor, getArtTexture, onArtLoaded } from './tokenArt';
+import { MOOD_STYLE, TILE, buildStaticLayers, glowTexture, noiseTexture, staticSignature, type Animated, type StaticLayers } from './mapRender';
+import { getPortraitTexture, onPortraitLoaded } from './portrait';
 
 export interface Cell {
   x: number;
@@ -27,76 +27,9 @@ export interface MapCanvasProps {
   onCellHover?: (cell: Cell | null) => void;
   /** Arrastar com o botão pressionado chama onCellClick a cada casa (pincel do editor). */
   paintMode?: boolean;
+  /** Linhas da grade tática (padrão: ligadas). */
+  showGrid?: boolean;
   className?: string;
-}
-
-const TILE = 48;
-
-const OBJECT_ICONS: Record<string, string> = {
-  barril_explosivo: '💥', barril_agua: '💧', barril_oleo: '🛢️', caixote: '📦', estatua: '🗿', braseiro: '🔥',
-};
-
-function shade(color: number, factor: number) {
-  const r = Math.min(255, Math.max(0, Math.round(((color >> 16) & 255) * factor)));
-  const g = Math.min(255, Math.max(0, Math.round(((color >> 8) & 255) * factor)));
-  const b = Math.min(255, Math.max(0, Math.round((color & 255) * factor)));
-  return (r << 16) | (g << 8) | b;
-}
-
-function drawTile(g: Graphics, tile: Tile, x: number, y: number) {
-  const def = TERRAIN[tile.t];
-  const px = x * TILE;
-  const py = y * TILE;
-  g.rect(px, py, TILE, TILE).fill(def.color);
-
-  switch (tile.t) {
-    case 'parede':
-    case 'portao':
-      g.rect(px + 2, py + 2, TILE - 4, TILE - 4).stroke({ width: 3, color: shade(def.color, 0.6) });
-      if (tile.t === 'portao') g.rect(px + TILE / 2 - 2, py + 6, 4, TILE - 12).fill(shade(def.color, 0.6));
-      break;
-    case 'coluna':
-      g.circle(px + TILE / 2, py + TILE / 2, TILE * 0.34).fill(shade(def.color, 1.1)).stroke({ width: 2, color: shade(def.color, 0.7) });
-      break;
-    case 'arvore':
-      g.rect(px, py, TILE, TILE).fill(0x4a7f33);
-      g.circle(px + TILE / 2, py + TILE / 2, TILE * 0.42).fill(def.color).stroke({ width: 2, color: shade(def.color, 0.7) });
-      break;
-    case 'agua_rasa':
-    case 'agua_profunda':
-    case 'estige':
-      for (let i = 1; i <= 2; i++) {
-        g.moveTo(px + 8, py + (TILE * i) / 3).lineTo(px + TILE - 8, py + (TILE * i) / 3).stroke({ width: 1, color: shade(def.color, 1.3), alpha: 0.5 });
-      }
-      break;
-    case 'lava':
-      g.circle(px + TILE * 0.3, py + TILE * 0.35, 4).fill(0xffc04d);
-      g.circle(px + TILE * 0.7, py + TILE * 0.65, 3).fill(0xffc04d);
-      break;
-    case 'elevado':
-      g.rect(px + 3, py + 3, TILE - 6, TILE - 6).stroke({ width: 2, color: 0xffffff, alpha: 0.35 });
-      break;
-    case 'ponte':
-    case 'madeira':
-      for (let i = 1; i < 4; i++) g.moveTo(px, py + (TILE * i) / 4).lineTo(px + TILE, py + (TILE * i) / 4).stroke({ width: 1, color: shade(def.color, 0.7) });
-      break;
-    case 'escombros':
-    case 'toco':
-      g.circle(px + TILE * 0.3, py + TILE * 0.6, 5).fill(shade(def.color, 0.7));
-      g.circle(px + TILE * 0.65, py + TILE * 0.35, 4).fill(shade(def.color, 0.8));
-      break;
-    case 'nuvem':
-      g.circle(px + TILE * 0.35, py + TILE * 0.5, TILE * 0.2).fill({ color: 0xffffff, alpha: 0.6 });
-      g.circle(px + TILE * 0.62, py + TILE * 0.45, TILE * 0.24).fill({ color: 0xffffff, alpha: 0.6 });
-      break;
-  }
-
-  // Rachaduras em terreno danificado
-  if (def.maxHp && tile.hp !== undefined && tile.hp < def.maxHp) {
-    const k = 1 - tile.hp / def.maxHp;
-    g.moveTo(px + 6, py + 8).lineTo(px + TILE / 2, py + TILE / 2).lineTo(px + TILE - 10, py + TILE * k + 6).stroke({ width: 2, color: 0x111111, alpha: 0.6 });
-  }
-  g.rect(px, py, TILE, TILE).stroke({ width: 1, color: 0x000000, alpha: 0.12 });
 }
 
 interface LiveFx {
@@ -106,10 +39,29 @@ interface LiveFx {
   kind: 'float' | 'burst';
 }
 
-export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, onCellClick, onCellHover, paintMode, className }: MapCanvasProps) {
+interface Layers {
+  world: Container;
+  ground: Container;
+  water: Container;
+  grid: Graphics;
+  surfaces: Container;
+  marks: Graphics;
+  features: Container;
+  tokens: Container;
+  canopy: Container;
+  dark: Graphics;
+  lights: Container;
+  fx: Container;
+  disp: Sprite;
+}
+
+export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, onCellClick, onCellHover, paintMode, showGrid = true, className }: MapCanvasProps) {
   const host = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
-  const layers = useRef<{ world: Container; tiles: Graphics; surfaces: Graphics; marks: Graphics; objects: Container; tokens: Container; fx: Container } | null>(null);
+  const layers = useRef<Layers | null>(null);
+  const staticRef = useRef<{ sig: string; layers: StaticLayers } | null>(null);
+  const animRef = useRef<Animated[]>([]);
+  const lightNodes = useRef<{ node: Sprite; base: number; flicker: boolean; phase: number }[]>([]);
   const liveFx = useRef<LiveFx[]>([]);
   const props = useRef({ onCellClick, onCellHover, paintMode, state });
   props.current = { onCellClick, onCellHover, paintMode, state };
@@ -132,16 +84,29 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
       el.appendChild(app.canvas);
       app.canvas.style.touchAction = 'none';
       const world = new Container();
-      const tiles = new Graphics();
-      const surfaces = new Graphics();
+      const ground = new Container();
+      const water = new Container();
+      const grid = new Graphics();
+      const surfaces = new Container();
       const marks = new Graphics();
-      const objects = new Container();
+      const features = new Container();
       const tokens = new Container();
+      const canopy = new Container();
+      const dark = new Graphics();
+      const lights = new Container();
       const fx = new Container();
-      world.addChild(tiles, surfaces, marks, objects, tokens, fx);
+      // Água ondulando: mapa de deslocamento com ruído, rolado no ticker
+      const noise = noiseTexture();
+      noise.source.addressMode = 'repeat';
+      const disp = new Sprite(noise);
+      disp.width = disp.height = 512;
+      disp.alpha = 0;
+      water.filters = [new DisplacementFilter({ sprite: disp, scale: 6 })];
+      lights.blendMode = 'add';
+      world.addChild(water, ground, grid, surfaces, marks, features, tokens, canopy, dark, lights, fx, disp);
       app.stage.addChild(world);
       appRef.current = app;
-      layers.current = { world, tiles, surfaces, marks, objects, tokens, fx };
+      layers.current = { world, ground, water, grid, surfaces, marks, features, tokens, canopy, dark, lights, fx, disp };
 
       // Encaixa o mapa na tela
       const { width, height } = props.current.state.map;
@@ -150,7 +115,26 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
       world.position.set((el.clientWidth - width * TILE * world.scale.x) / 2, (el.clientHeight - height * TILE * world.scale.y) / 2);
 
       // Animações de efeitos
+      let clock = 0;
       app.ticker.add((t) => {
+        clock += t.deltaMS / 1000;
+        disp.x = (clock * 14) % 256;
+        disp.y = (clock * 9) % 256;
+        for (const a of animRef.current) {
+          if (a.node.destroyed) continue;
+          if (a.kind === 'flicker') {
+            a.node.scale.y = 0.85 + Math.sin(clock * 11 + a.phase) * 0.12 + Math.sin(clock * 23 + a.phase) * 0.05;
+            a.node.alpha = 0.85 + Math.sin(clock * 17 + a.phase) * 0.15;
+          } else if (a.kind === 'pulse') {
+            a.node.alpha = 0.4 + (Math.sin(clock * 3 + a.phase) + 1) * 0.3;
+          } else if (a.kind === 'bob') {
+            a.node.y = Math.sin(clock * 0.9 + a.phase) * 0.8;
+          }
+        }
+        for (const l of lightNodes.current) {
+          if (l.node.destroyed) continue;
+          l.node.alpha = l.flicker ? l.base * (0.85 + Math.sin(clock * 9 + l.phase) * 0.1 + Math.sin(clock * 21 + l.phase) * 0.05) : l.base;
+        }
         for (const f of liveFx.current) {
           f.life -= t.deltaMS;
           const p = 1 - f.life / f.max;
@@ -276,6 +260,7 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
         appRef.current.destroy(true, { children: true });
         appRef.current = null;
         layers.current = null;
+        staticRef.current = null;
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -286,61 +271,125 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
     const L = layers.current;
     if (!L) return;
     const { map, tokens, combat } = state;
-    L.tiles.clear();
-    L.surfaces.clear();
-    L.marks.clear();
-    for (const c of L.objects.removeChildren()) c.destroy();
-    for (const c of L.tokens.removeChildren()) c.destroy({ children: true });
+    const mood = map.mood ?? 'dia';
 
+    // Camadas estáticas (chão, água, paredes, árvores, objetos): só refaz quando o mapa muda
+    const sig = staticSignature(map);
+    if (staticRef.current?.sig !== sig) {
+      for (const layer of [L.ground, L.water, L.features, L.canopy]) for (const c of layer.removeChildren()) c.destroy({ children: true });
+      const built = buildStaticLayers(map);
+      L.ground.addChild(built.ground);
+      L.water.addChild(built.water);
+      L.features.addChild(built.features);
+      L.canopy.addChild(built.canopy);
+      staticRef.current = { sig, layers: built };
+      // Ambiente (escuridão) e luzes
+      const style = MOOD_STYLE[mood];
+      L.dark.clear();
+      if (style.darkness > 0) L.dark.rect(0, 0, map.width * TILE, map.height * TILE).fill({ color: style.tint, alpha: style.darkness });
+      // Vinheta nas bordas do mapa
+      const v = Math.min(map.width, map.height) * TILE * 0.18;
+      for (let i = 0; i < 6; i++) {
+        const k = i / 6;
+        L.dark.rect(k * v, k * v, map.width * TILE - 2 * k * v, map.height * TILE - 2 * k * v).stroke({ width: v / 6, color: 0x000000, alpha: style.vignette * (1 - k) * 0.35 });
+      }
+      // Grade tática
+      L.grid.clear();
+      for (let x = 0; x <= map.width; x++) L.grid.moveTo(x * TILE, 0).lineTo(x * TILE, map.height * TILE);
+      for (let y = 0; y <= map.height; y++) L.grid.moveTo(0, y * TILE).lineTo(map.width * TILE, y * TILE);
+      L.grid.stroke({ width: 1, color: 0x000000, alpha: 0.14 });
+    }
+    L.grid.visible = showGrid;
+    const built = staticRef.current!.layers;
+
+    // Superfícies (dinâmicas): fogo, água, gelo, óleo, veneno, vapor
+    for (const c of L.surfaces.removeChildren()) c.destroy({ children: true });
+    const anim: Animated[] = [...built.animated];
+    const lightList = [...built.lights];
+    const sg = new Graphics();
+    L.surfaces.addChild(sg);
     for (let y = 0; y < map.height; y++) {
       for (let x = 0; x < map.width; x++) {
         const tile = map.tiles[y * map.width + x];
-        drawTile(L.tiles, tile, x, y);
-        if (tile.s) {
-          const s = SURFACES[tile.s.type];
-          L.surfaces.rect(x * TILE, y * TILE, TILE, TILE).fill({ color: s.color, alpha: s.alpha });
-          if (tile.s.type === 'agua_eletrificada') {
-            L.surfaces.moveTo(x * TILE + 10, y * TILE + 12).lineTo(x * TILE + 24, y * TILE + 26).lineTo(x * TILE + 18, y * TILE + 28).lineTo(x * TILE + 34, y * TILE + 40).stroke({ width: 2, color: 0xffff66 });
+        if (!tile.s) continue;
+        const s = SURFACES[tile.s.type];
+        const px = x * TILE;
+        const py = y * TILE;
+        sg.roundRect(px + 2, py + 2, TILE - 4, TILE - 4, 10).fill({ color: s.color, alpha: s.alpha });
+        if (tile.s.type === 'fogo') {
+          const f = new Graphics();
+          for (let i = 0; i < 3; i++) {
+            const fx = px + 10 + i * 13;
+            f.ellipse(fx, py + TILE * 0.62, 6, 13).fill({ color: 0xff5a1a, alpha: 0.85 });
+            f.ellipse(fx, py + TILE * 0.68, 3, 7).fill({ color: 0xffe066, alpha: 0.95 });
           }
-        }
-        if (tile.o) {
-          const def = OBJECTS[tile.o.type];
-          const bg = new Graphics().roundRect(x * TILE + 8, y * TILE + 8, TILE - 16, TILE - 16, 6).fill({ color: def.color, alpha: 0.85 });
-          const icon = new Text({ text: OBJECT_ICONS[tile.o.type] ?? '?', style: { fontSize: 20 } });
-          icon.anchor.set(0.5);
-          icon.position.set(x * TILE + TILE / 2, y * TILE + TILE / 2);
-          L.objects.addChild(bg, icon);
+          f.pivot.set(0, py + TILE * 0.8);
+          f.y = py + TILE * 0.8;
+          L.surfaces.addChild(f);
+          anim.push({ node: f, kind: 'flicker', phase: (x * 7 + y * 3) % 6, base: 1 });
+          lightList.push({ x: x + 0.5, y: y + 0.5, radius: 2.2, color: 0xff7a1a, flicker: true });
+        } else if (tile.s.type === 'agua_eletrificada') {
+          const z = new Graphics().moveTo(px + 10, py + 12).lineTo(px + 24, py + 26).lineTo(px + 18, py + 28).lineTo(px + 34, py + 40).stroke({ width: 2, color: 0xffff66 });
+          L.surfaces.addChild(z);
+          anim.push({ node: z, kind: 'pulse', phase: x + y, base: 1 });
+          lightList.push({ x: x + 0.5, y: y + 0.5, radius: 1.4, color: 0x8fe3ff, flicker: true });
+        } else if (tile.s.type === 'gelo') {
+          sg.moveTo(px + 8, py + 30).lineTo(px + 22, py + 16).moveTo(px + 26, py + 38).lineTo(px + 40, py + 24).stroke({ width: 2, color: 0xffffff, alpha: 0.7 });
+        } else if (tile.s.type === 'veneno' || tile.s.type === 'vapor') {
+          const cloud = new Graphics();
+          for (let i = 0; i < 3; i++) cloud.circle(px + 12 + i * 12, py + 20 + (i % 2) * 10, 11).fill({ color: s.color, alpha: 0.35 });
+          L.surfaces.addChild(cloud);
+          anim.push({ node: cloud, kind: 'pulse', phase: x * 2 + y, base: 1 });
+        } else if (tile.s.type === 'oleo') {
+          sg.ellipse(px + 18, py + 18, 6, 3).fill({ color: 0xffffff, alpha: 0.18 });
         }
       }
     }
 
+    // Destaques (alcance, alvos)
+    L.marks.clear();
     for (const h of highlights ?? []) {
-      L.marks.rect(h.x * TILE + 2, h.y * TILE + 2, TILE - 4, TILE - 4).fill({ color: h.color, alpha: h.alpha ?? 0.3 }).stroke({ width: 2, color: h.color, alpha: 0.8 });
+      L.marks.roundRect(h.x * TILE + 3, h.y * TILE + 3, TILE - 6, TILE - 6, 8).fill({ color: h.color, alpha: h.alpha ?? 0.3 }).stroke({ width: 2, color: h.color, alpha: 0.85 });
     }
 
+    // Tokens
+    for (const c of L.tokens.removeChildren()) c.destroy({ children: true });
     const currentId = combat?.currentTokenId ?? null;
-    for (const t of tokens) {
+    const sorted = [...tokens].sort((a, b) => a.y - b.y);
+    for (const t of sorted) {
       const c = new Container();
       c.position.set(t.x * TILE + TILE / 2, t.y * TILE + TILE / 2);
       const color = parseInt((t.color ?? '#888888').replace('#', ''), 16);
       const g = new Graphics();
-      if (t.id === currentId) g.circle(0, 0, TILE * 0.47).stroke({ width: 4, color: 0xffd34d, alpha: 0.9 });
-      if (t.id === selectedTokenId) g.circle(0, 0, TILE * 0.44).stroke({ width: 3, color: 0x7cf3ff });
-      g.circle(0, 0, TILE * 0.36).fill(t.dead ? 0x555555 : color).stroke({ width: 2, color: t.kind === 'monstro' ? 0x2a0000 : 0xffffff });
+      g.ellipse(3, TILE * 0.36, TILE * 0.36, TILE * 0.12).fill({ color: 0x000000, alpha: 0.35 });
+      if (t.id === currentId) g.circle(0, 0, TILE * 0.49).stroke({ width: 4, color: 0xffd34d, alpha: 0.95 });
+      if (t.id === selectedTokenId) g.circle(0, 0, TILE * 0.46).stroke({ width: 3, color: 0x7cf3ff });
+      g.circle(0, 0, TILE * 0.4).fill(t.dead ? 0x444444 : color).stroke({ width: 3, color: t.kind === 'monstro' ? 0x2a0000 : 0xffffff });
       c.addChild(g);
-      // Ícone do token (classe do herói ou silhueta do monstro); iniciais enquanto a arte carrega
-      const tex = getArtTexture(artKeyFor(t));
-      if (tex && !t.dead) {
+      const face = t.kind === 'personagem' && !t.dead ? getPortraitTexture(t.face) : null;
+      const tex = face ?? (t.dead ? null : getArtTexture(artKeyFor(t)));
+      if (tex) {
         const icon = new Sprite(tex);
         icon.anchor.set(0.5);
-        icon.width = icon.height = TILE * 0.56;
+        icon.width = icon.height = face ? TILE * 0.74 : TILE * 0.56;
         c.addChild(icon);
+        // Herói com rosto: ícone da classe pequeno no canto
+        if (face) {
+          const cls = getArtTexture(artKeyFor({ ...t, portrait: t.portrait }));
+          if (cls) {
+            const badge = new Graphics().circle(-TILE * 0.3, TILE * 0.28, 8).fill(color).stroke({ width: 1.5, color: 0xffffff });
+            const ci = new Sprite(cls);
+            ci.anchor.set(0.5);
+            ci.width = ci.height = 12;
+            ci.position.set(-TILE * 0.3, TILE * 0.28);
+            c.addChild(badge, ci);
+          }
+        }
       } else {
         const label = new Text({ text: t.dead ? '✖' : t.name.slice(0, 2).toUpperCase(), style: { fontSize: 15, fontWeight: '700', fill: 0xffffff, stroke: { color: 0x000000, width: 3 } } });
         label.anchor.set(0.5);
         c.addChild(label);
       }
-      // Emblema do pai olímpico no canto
       if (t.emblem && !t.dead) {
         const badge = new Graphics().circle(TILE * 0.3, -TILE * 0.3, 9).fill(0x0b1020).stroke({ width: 1.5, color: 0xffd34d });
         const sym = new Text({ text: t.emblem, style: { fontSize: 11 } });
@@ -348,26 +397,47 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
         sym.position.set(TILE * 0.3, -TILE * 0.3);
         c.addChild(badge, sym);
       }
-
-      // Barra de vida (aliados) ou anel de estado (monstros para jogadores)
       const hp = typeof t.hp === 'number' && typeof t.maxHp === 'number' ? t.hp / Math.max(1, t.maxHp) : null;
       if (hp !== null && !t.dead) {
-        const bar = new Graphics().rect(-TILE * 0.38, TILE * 0.36, TILE * 0.76, 5).fill(0x220000).rect(-TILE * 0.38, TILE * 0.36, TILE * 0.76 * hp, 5).fill(hp > 0.5 ? 0x4cd964 : hp > 0.25 ? 0xffcc00 : 0xff3b30);
-        c.addChild(bar);
+        c.addChild(new Graphics().roundRect(-TILE * 0.38, TILE * 0.4, TILE * 0.76, 6, 3).fill(0x220000).roundRect(-TILE * 0.38, TILE * 0.4, TILE * 0.76 * hp, 6, 3).fill(hp > 0.5 ? 0x4cd964 : hp > 0.25 ? 0xffcc00 : 0xff3b30));
       } else if ('hpStatus' in t && !t.dead) {
         const status = (t as { hpStatus: string }).hpStatus;
         const ring = status === 'ileso' ? 0x4cd964 : status === 'ferido' ? 0xffcc00 : 0xff3b30;
-        c.addChild(new Graphics().circle(0, 0, TILE * 0.4).stroke({ width: 2, color: ring, alpha: 0.9 }));
+        c.addChild(new Graphics().circle(0, 0, TILE * 0.43).stroke({ width: 2, color: ring, alpha: 0.9 }));
       }
       if (t.conditions.length) {
         const icons = new Text({ text: t.conditions.slice(0, 3).map((k) => CONDITIONS[k]?.icon ?? '').join(''), style: { fontSize: 11 } });
         icons.anchor.set(0.5, 1);
-        icons.position.set(0, -TILE * 0.36);
+        icons.position.set(0, -TILE * 0.4);
         c.addChild(icons);
       }
       if (t.hidden) c.alpha = 0.45;
       L.tokens.addChild(c);
+      // Em lugares escuros, heróis carregam uma tocha
+      if (t.kind !== 'monstro' && !t.dead && MOOD_STYLE[mood].darkness > 0.2) lightList.push({ x: t.x + 0.5, y: t.y + 0.5, radius: 3, color: 0xffd9a0, flicker: true });
     }
+
+    // Copas das árvores ficam transparentes sobre tokens
+    for (const [k, node] of built.canopyByCell) {
+      const [x, y] = k.split(',').map(Number);
+      node.alpha = tokens.some((t) => !t.dead && Math.abs(t.x - x) <= 0 && (t.y === y || t.y === y - 1)) ? 0.35 : 0.95;
+    }
+
+    // Luzes (brilho aditivo)
+    for (const c of L.lights.removeChildren()) c.destroy();
+    lightNodes.current = [];
+    const strength = MOOD_STYLE[mood].darkness > 0.2 ? 0.55 : 0.22;
+    for (const l of lightList) {
+      const sp = new Sprite(glowTexture());
+      sp.anchor.set(0.5);
+      sp.position.set(l.x * TILE, l.y * TILE);
+      sp.width = sp.height = l.radius * 2 * TILE;
+      sp.tint = l.color;
+      sp.alpha = strength;
+      L.lights.addChild(sp);
+      lightNodes.current.push({ node: sp, base: strength, flicker: !!l.flicker, phase: (l.x * 13 + l.y * 7) % 6 });
+    }
+    animRef.current = anim;
 
     // Foco inicial no token do jogador
     if (!focused.current && focusTokenId && appRef.current) {
@@ -389,8 +459,10 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
   drawRef.current = draw;
   useEffect(() => {
     const off = onArtLoaded(() => drawRef.current());
+    const off2 = onPortraitLoaded(() => drawRef.current());
     return () => {
       off();
+      off2();
     };
   }, []);
 

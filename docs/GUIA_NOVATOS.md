@@ -149,7 +149,75 @@ Na aba **Dados**, as rolagens podem ser **públicas** (todos veem) ou **privadas
 
 ---
 
-## 8. Combinados de mesa
+## 8. Testes: quando o Mestre pede uma rolagem
+
+Sempre que o resultado é incerto, o Mestre pede um **teste**. No Mesa RPG, um **cartão amarelo** aparece no topo do seu celular:
+
+> 🎯 **O Mestre pede: Percepção CD 13 — ouvir passos na floresta** · \[🎲 Rolar\] \[com vantagem\] \[desvantagem\]
+
+1. Toque em **🎲 Rolar**. Só use "com vantagem" ou "desvantagem" se o Mestre disser.
+2. O app rola **1d20 + o seu modificador**. O modificador já inclui o atributo e, se você for treinado naquela perícia, o bônus de proficiência.
+3. Aparece **✅ SUCESSO** ou **❌ FALHA** para todos. **Esse resultado vale na história.**
+4. Diga como o seu herói faz aquilo, e o Mestre narra o que acontece.
+
+**Os três tipos de teste:**
+
+| Tipo | Para quê | Exemplo |
+|---|---|---|
+| **Perícia** | Fazer algo em que treino ajuda | Persuasão para convencer o guarda; Furtividade para passar escondido |
+| **Atributo** | Força ou esperteza bruta, sem perícia | Força para segurar uma porta |
+| **Resistência** | **Evitar** algo ruim | Destreza para pular de uma explosão; Sabedoria para não cair numa ilusão |
+
+**Quanto é difícil?** CD 5 muito fácil · 10 fácil · 15 médio · 20 difícil · 25 muito difícil.
+
+**Falhar não é perder.** Falhar quase sempre faz a história ficar mais interessante: o guarda chama reforço, a porta range, vocês chegam atrasados.
+
+---
+
+## 9. Quando o seu herói cai
+
+- Com **0 PV** você cai **inconsciente**. A tela mostra 😵 e as suas salvaguardas.
+- No seu turno, o app rola sozinho uma **salvaguarda contra a morte**: **10 ou mais** é um sucesso ✔, **menos que 10** é uma falha ✖.
+  - **3 sucessos:** você fica estável (desmaiado, mas fora de perigo).
+  - **3 falhas:** seu herói morre. Converse com o Mestre: no mundo dos deuses, às vezes há um preço para voltar…
+  - **Tirou 20?** Você se levanta com 1 PV! **Tirou 1?** Conta como duas falhas.
+- **Qualquer cura te acorda na hora.** Peça para um amigo ao seu lado usar uma **Poção de Cura** em você (aba 🎒 Itens → usar no aliado).
+
+**Descansar:** fora de combate, o Mestre pode dar um **descanso curto** (1 hora: recupera ¼ do PV) ou **longo** (uma noite: recupera tudo).
+
+---
+
+## 10. Experiência, níveis e tesouros
+
+- **XP:** cada monstro derrotado e cada quest concluída dá **experiência** para todos os heróis. O Mestre também dá XP extra por **boas ideias e boa interpretação**. Conversar com o monstro em vez de lutar também conta!
+- **Nível:** com **300 XP** você vai para o nível 2, com **900** para o 3, com **2.700** para o 4 e com **6.500** para o 5. O app avisa **🆙** e seu PV máximo aumenta. Veja a barra de XP na sua ficha.
+- **Baús 🧰:** chegue ao lado e toque em **Abrir baú** (aba ⚔️ Ações) ou direto no baú. Se estiver trancado, o app tenta abrir a fechadura (Prestidigitação) ou arrombar (Atletismo). Não abriu? Tente de novo. O que estiver dentro vai direto para o seu inventário.
+- **Dracmas:** a moeda dos deuses. Servem para pagar o barqueiro dos mortos, comprar favores e subornar monstros gananciosos.
+
+---
+
+## 11. Glossário rápido
+
+| Termo | O que é |
+|---|---|
+| **Mestre** | Quem narra e controla o mundo |
+| **NPC** | Personagem do Mestre (Quíron, um monstro, o vendedor) |
+| **d20, 2d6** | Um dado de 20 lados; dois dados de 6 lados |
+| **CD** | Número que você precisa alcançar num teste |
+| **CA** | Quão difícil é te acertar |
+| **PV** | Pontos de vida |
+| **Modificador** | O número somado ao dado, que vem do atributo |
+| **Proficiência** | Bônus por ser treinado (+2 no nível 1) |
+| **Vantagem** | Rolar 2d20 e ficar com o maior |
+| **Iniciativa** | A ordem dos turnos no combate |
+| **Ação / Ação bônus / Reação** | O que dá para fazer no turno |
+| **Crítico** | 20 natural: dano dobrado |
+| **XP** | Experiência para subir de nível |
+| **Side quest** | Missão opcional com recompensa extra |
+
+---
+
+## 12. Combinados de mesa
 
 - O Mestre tem a palavra final nas regras. Se algo parecer estranho, pergunte!
 - Fale o que seu personagem **faz e diz**, não só os números.

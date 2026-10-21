@@ -22,3 +22,8 @@ export * from './engine/reducer';
 export * from './engine/visibility';
 export * from './engine/state';
 export * from './protocol';
+export * from './engine/checks';
+export * from './engine/interact';
+export * from './content/loot';
+export * from './content/adventures';
+export * from './engine/mapgen';

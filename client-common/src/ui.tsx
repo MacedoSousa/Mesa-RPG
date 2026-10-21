@@ -58,9 +58,9 @@ export function TextArea({ label, value, onChange, rows = 4 }: { label: string; 
   );
 }
 
-export function Select<T extends string>({ label, value, onChange, options }: { label?: string; value: T; onChange: (v: T) => void; options: { value: T; label: string }[] }) {
+export function Select<T extends string>({ label, value, onChange, options, className }: { label?: string; value: T; onChange: (v: T) => void; options: { value: T; label: string }[]; className?: string }) {
   return (
-    <label className="block">
+    <label className={cx('block', className)}>
       {label && <span className="mb-1 block text-sm text-slate-300">{label}</span>}
       <select value={value} onChange={(e) => onChange(e.target.value as T)} className="w-full rounded-lg border border-white/15 bg-slate-950 px-3 py-2 text-slate-100">
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}

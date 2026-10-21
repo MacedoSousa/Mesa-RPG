@@ -10,8 +10,13 @@ import { Command, TOKEN_COMMANDS, canIssue } from './commands';
 import { CommandError, EngineContext, createContext } from './context';
 import { createMonsterToken } from './factory';
 import { OBJECTS, SURFACES, TERRAIN, applyElementArea, damageTile, inBounds, isWalkableTile, tileAt } from './map';
-import { progressQuest } from './quests';
-import { findToken, healToken, removeCondition, tokenAt } from './tokens';
+import { completeQuest, progressQuest } from './quests';
+import { damageToken, findToken, healToken, removeCondition, tokenAt } from './tokens';
+import { requestChecks, rollCheck } from './checks';
+import { grantToHeroes, openChest, placeChest } from './interact';
+import { autoAct } from './combat';
+import { generateMap } from './mapgen';
+import { DAMAGE_TYPES } from '../content/items';
 import type { Condition } from '../content/conditions';
 import type { Actor, TableState, Token } from './types';
 
@@ -120,6 +125,119 @@ function execute(ctx: EngineContext, cmd: Command) {
       for (const c of item.effect.removeConditions ?? []) removeCondition(target, c as Condition);
       ctx.log(`🧪 ${t.name} usa ${item.name}${target.id !== t.id ? ` em ${target.name}` : ''}: ${parts.join(', ') || 'efeito aplicado'}`, { type: 'item' });
       if (t.characterId) ctx.sideEffects.push({ type: 'consumable_used', characterId: t.characterId, itemKey: cmd.itemKey, quantity: 1 });
+      return;
+    }
+    case 'object.open':
+      openChest(ctx, requireToken(state, cmd.tokenId), cmd.x, cmd.y);
+      return;
+    case 'check.roll':
+      rollCheck(ctx, cmd.checkId, cmd.advantage);
+      return;
+    case 'combat.auto': {
+      const t = requireToken(state, cmd.tokenId);
+      if (state.combat) {
+        const inCombat = state.combat.order.some((e) => e.tokenId === t.id);
+        if (inCombat && currentTurnTokenId(state.combat) !== t.id) throw new CommandError('Não é o turno deste token', 'not_your_turn');
+      }
+      autoAct(ctx, t);
+      return;
+    }
+    case 'token.damage': {
+      if (cmd.amount === undefined && !cmd.formula) throw new CommandError('Informe o valor ou a fórmula');
+      let base = cmd.amount ?? 0;
+      let detail = '';
+      if (cmd.formula) {
+        try {
+          const r = roll(cmd.formula, ctx.rng);
+          base = r.total;
+          detail = ` (${r.formula} = ${r.total})`;
+        } catch (e) {
+          throw new CommandError(e instanceof DiceError ? e.message : 'Fórmula inválida');
+        }
+      }
+      const amount = cmd.half ? Math.floor(base / 2) : base;
+      const src = cmd.source ?? 'Mestre';
+      for (const tid of cmd.tokenIds) {
+        const t = requireToken(state, tid);
+        if (cmd.heal) {
+          const healed = healToken(ctx, t, amount);
+          ctx.log(`💚 ${t.name} recupera ${healed} PV${detail} — ${src}. PV: ${t.hp}/${t.maxHp}`, { type: 'combate', visibility: t.hidden ? 'mestre' : 'publico' });
+        } else {
+          const dealt = damageToken(ctx, t, amount, DAMAGE_TYPES.includes(cmd.damageType) ? cmd.damageType : 'concussao', src);
+          const shown = t.kind === 'monstro' ? '' : ` PV: ${t.hp}/${t.maxHp}`;
+          ctx.log(`💥 ${t.name} sofre ${dealt} de dano ${cmd.damageType}${detail}${cmd.half ? ' (metade)' : ''} — ${src}.${shown}`, { type: 'combate', visibility: t.hidden ? 'mestre' : 'publico' });
+        }
+      }
+      return;
+    }
+    case 'check.request':
+      requestChecks(ctx, { userIds: cmd.userIds, kind: cmd.kind, key: cmd.key, dc: cmd.dc, secretDc: cmd.secretDc, label: cmd.label });
+      return;
+    case 'item.take': {
+      const item = getItem(cmd.itemKey);
+      if (!item) throw new CommandError('Item desconhecido');
+      const heroes = cmd.tokenIds === 'todos'
+        ? state.tokens.filter((t) => t.kind === 'personagem' && t.characterId && !t.hidden && !t.dead)
+        : cmd.tokenIds.map((tid) => requireToken(state, tid)).filter((t) => t.characterId);
+      if (!heroes.length) throw new CommandError('Nenhum herói selecionado');
+      for (const t of heroes) {
+        if (t.consumables[cmd.itemKey] !== undefined) t.consumables[cmd.itemKey] = Math.max(0, t.consumables[cmd.itemKey] - cmd.quantity);
+        ctx.sideEffects.push({ type: 'consumable_used', characterId: t.characterId!, itemKey: cmd.itemKey, quantity: cmd.quantity });
+      }
+      ctx.log(`💸 ${cmd.reason}: ${cmd.quantity}× ${item.name} de ${heroes.map((h) => h.name).join(', ')}`, { type: 'recompensa' });
+      return;
+    }
+    case 'party.rest': {
+      if (state.combat) throw new CommandError('Não dá para descansar no meio do combate');
+      const heroes = state.tokens.filter((t) => t.kind === 'personagem' && !t.dead);
+      for (const t of heroes) {
+        if (cmd.kind === 'longo') {
+          t.hp = t.maxHp;
+          t.stamina = t.maxStamina;
+          t.tempHp = 0;
+          t.deathSaves = undefined;
+          t.conditions = t.conditions.filter((c) => c === 'molhado');
+        } else {
+          t.hp = Math.min(t.maxHp, t.hp + Math.max(1, Math.ceil(t.maxHp / 4)));
+          t.stamina = Math.min(t.maxStamina, t.stamina + Math.ceil(t.maxStamina / 2));
+          if (t.hp > 0) {
+            removeCondition(t, 'inconsciente');
+            t.deathSaves = undefined;
+          }
+        }
+        if (t.characterId) ctx.sideEffects.push({ type: 'character_hp', characterId: t.characterId, hp: t.hp, stamina: t.stamina });
+      }
+      ctx.log(
+        cmd.kind === 'longo'
+          ? '🌙 Descanso longo: uma noite inteira de sono. PV e Estamina totalmente recuperados.'
+          : '☕ Descanso curto (1 hora): cada herói recupera ¼ do PV máximo e metade da Estamina.',
+        { type: 'sistema' },
+      );
+      return;
+    }
+    case 'check.clear':
+      state.checks = (state.checks ?? []).filter((c) => c.status === 'pendente');
+      return;
+    case 'reward.grant':
+      grantToHeroes(ctx, { tokenIds: cmd.tokenIds, xp: cmd.xp, dracmas: cmd.dracmas, items: cmd.items, reason: cmd.reason });
+      return;
+    case 'chest.place':
+      placeChest(ctx, { x: cmd.x, y: cmd.y, loot: cmd.loot, dracmas: cmd.dracmas, lockDc: cmd.lockDc, tier: cmd.tier });
+      return;
+    case 'adventure.load': {
+      if (cmd.replace) {
+        state.chapters = [];
+        state.activeChapterId = null;
+        state.sideQuests = state.sideQuests.filter((q) => q.status !== 'ativa' || !q.hidden);
+      }
+      const base = state.chapters.length;
+      cmd.chapters.forEach((c, i) => state.chapters.push({ id: ctx.id(`cap${i}`), title: c.title, description: c.description, status: 'pendente', order: base + i + 1 }));
+      cmd.quests.forEach((q, i) => state.sideQuests.push({
+        id: ctx.id(`qst${i}`), title: q.title, description: q.description, status: 'ativa', hidden: q.hidden, progress: 0, target: q.target,
+        reward: q.reward, rewardXp: q.rewardXp, rewardDracmas: q.rewardDracmas, rewardItems: q.rewardItems,
+        expiresAtRound: null, expiresAt: null, onExpire: null, createdAt: ctx.now,
+      }));
+      ctx.log(`📚 Aventura carregada: ${cmd.chapters.length} capítulo(s) e ${cmd.quests.length} quest(s).`, { type: 'capitulo', visibility: 'mestre' });
       return;
     }
     case 'dice.roll': {
@@ -244,20 +362,21 @@ function execute(ctx: EngineContext, cmd: Command) {
       return;
     case 'map.set': {
       state.map = structuredClone(cmd.map);
-      // Reposiciona tokens que ficaram fora do mapa ou sobre casas bloqueadas
-      for (const t of state.tokens) {
-        const tile = tileAt(state.map, t.x, t.y);
-        if (!tile || !isWalkableTile(tile) || tokenAt(state, t.x, t.y, t.id)) {
-          const free = findFreeCell(state, t.id);
-          if (free) {
-            t.x = free.x;
-            t.y = free.y;
-          }
-        }
-      }
+      relocateTokens(state);
       ctx.log(`🗺️ Novo mapa: ${cmd.map.name}`, { type: 'mapa' });
       return;
     }
+    case 'map.generate': {
+      const seed = cmd.seed ?? Math.floor(ctx.rng() * 1e6).toString(36);
+      state.map = generateMap(cmd.kind, cmd.width, cmd.height, seed);
+      relocateTokens(state);
+      ctx.log(`🗺️ Novo mapa gerado: ${state.map.name}`, { type: 'mapa' });
+      return;
+    }
+    case 'map.mood':
+      state.map.mood = cmd.mood;
+      ctx.log(`🌗 Ambiente: ${cmd.mood}`, { type: 'mapa', visibility: 'mestre' });
+      return;
     case 'map.paint': {
       for (const c of cmd.cells) {
         const tile = tileAt(state.map, c.x, c.y);
@@ -294,6 +413,9 @@ function execute(ctx: EngineContext, cmd: Command) {
         progress: 0,
         target: cmd.target,
         reward: cmd.reward,
+        rewardXp: cmd.rewardXp,
+        rewardDracmas: cmd.rewardDracmas,
+        rewardItems: cmd.rewardItems,
         expiresAtRound: cmd.expiresInRounds && state.combat ? state.combat.round + cmd.expiresInRounds - 1 : null,
         expiresAt: cmd.expiresInSeconds ? ctx.now + cmd.expiresInSeconds * 1000 : null,
         onExpire: cmd.onExpire ?? null,
@@ -309,8 +431,11 @@ function execute(ctx: EngineContext, cmd: Command) {
       if (cmd.description !== undefined) q.description = cmd.description;
       if (cmd.hidden !== undefined) q.hidden = cmd.hidden;
       if (cmd.status !== undefined && cmd.status !== q.status) {
-        q.status = cmd.status;
-        ctx.log(`📜 Quest "${q.title}": ${cmd.status}`, { type: 'quest', visibility: q.hidden ? 'mestre' : 'publico' });
+        if (cmd.status === 'concluida') completeQuest(ctx, q);
+        else {
+          q.status = cmd.status;
+          ctx.log(`📜 Quest "${q.title}": ${cmd.status}`, { type: 'quest', visibility: q.hidden ? 'mestre' : 'publico' });
+        }
       }
       return;
     }
@@ -355,6 +480,20 @@ function assertFreeCell(state: TableState, x: number, y: number) {
   if (!isWalkableTile(tile)) throw new CommandError(`${TERRAIN[tile.t].label} não é uma casa livre`);
   const t = tokenAt(state, x, y);
   if (t) throw new CommandError(`Casa ocupada por ${t.name}`);
+}
+
+/** Reposiciona tokens que ficaram fora do mapa ou sobre casas bloqueadas. */
+function relocateTokens(state: TableState) {
+  for (const t of state.tokens) {
+    const tile = tileAt(state.map, t.x, t.y);
+    if (!tile || !isWalkableTile(tile) || TERRAIN[tile.t].hazard || tokenAt(state, t.x, t.y, t.id)) {
+      const free = findFreeCell(state, t.id);
+      if (free) {
+        t.x = free.x;
+        t.y = free.y;
+      }
+    }
+  }
 }
 
 export function findFreeCell(state: TableState, ignoreId?: string, near?: { x: number; y: number }): { x: number; y: number } | null {

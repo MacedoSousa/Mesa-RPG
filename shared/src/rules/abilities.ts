@@ -85,3 +85,19 @@ export const SKILLS = {
 } as const satisfies Record<string, { label: string; ability: Ability }>;
 export type Skill = keyof typeof SKILLS;
 export const SKILL_KEYS = Object.keys(SKILLS) as Skill[];
+
+// ───────────── Experiência e níveis (tabela do SRD) ─────────────
+
+export const XP_THRESHOLDS = [0, 300, 900, 2700, 6500, 14000, 23000, 34000, 48000, 64000, 85000, 100000, 120000, 140000, 165000, 195000, 225000, 265000, 305000, 355000] as const;
+export const MAX_LEVEL = 20;
+
+export function levelForXp(xp: number): number {
+  let level = 1;
+  for (let i = 0; i < XP_THRESHOLDS.length; i++) if (xp >= XP_THRESHOLDS[i]) level = i + 1;
+  return Math.min(MAX_LEVEL, level);
+}
+
+/** XP necessário para chegar ao próximo nível (null no nível máximo). */
+export function xpForNextLevel(level: number): number | null {
+  return level >= MAX_LEVEL ? null : XP_THRESHOLDS[level];
+}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { MONSTERS, type ProjectedState } from '@mesa/shared';
+import { ADVENTURES, MONSTERS, type ProjectedState } from '@mesa/shared';
 import { Badge, Button, Field, Select, TextArea, cx, useTable } from '@mesa/common';
 
 /** Fases / capítulos da campanha. */
@@ -7,8 +7,30 @@ export function ChaptersPanel({ state }: { state: ProjectedState }) {
   const send = useTable((s) => s.send);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [open, setOpen] = useState<string | null>(null);
   return (
     <div className="space-y-3">
+      <div className="rounded-xl border border-amber-400/40 bg-amber-950/20 p-3">
+        <p className="text-sm font-semibold text-amber-200">📚 Aventuras prontas</p>
+        {ADVENTURES.map((a) => (
+          <div key={a.key} className="mt-2 text-sm">
+            <p className="font-semibold">{a.title} <span className="text-xs font-normal text-slate-400">· {a.levels}</span></p>
+            <p className="text-xs text-slate-300">{a.summary}</p>
+            <Button
+              size="sm"
+              variant="gold"
+              className="mt-2"
+              onClick={() => {
+                if (state.chapters.length && !window.confirm('Substituir os capítulos atuais pelos da aventura?')) return;
+                void send({ type: 'adventure.load', replace: true, chapters: a.chapters, quests: a.quests });
+              }}
+            >
+              Carregar capítulos e quests
+            </Button>
+            <p className="mt-1 text-[11px] text-slate-400">Roteiro completo para narrar (textos em voz alta, NPCs, baús): <code>{a.doc}</code></p>
+          </div>
+        ))}
+      </div>
       <div className="space-y-1">
         {state.chapters.length === 0 && <p className="text-sm text-slate-400">Nenhum capítulo. Divida a aventura em fases!</p>}
         {state.chapters.map((c) => (
@@ -18,7 +40,12 @@ export function ChaptersPanel({ state }: { state: ProjectedState }) {
               <span className="flex-1 font-semibold">{c.title}</span>
               <Badge color={c.status === 'ativo' ? 'amber' : c.status === 'concluido' ? 'emerald' : 'slate'}>{c.status}</Badge>
             </div>
-            {c.description && <p className="mt-1 text-xs text-slate-400">{c.description}</p>}
+            {c.description && (
+              <>
+                <p className={cx('mt-1 whitespace-pre-line text-xs text-slate-300', open !== c.id && 'line-clamp-3')}>{c.description}</p>
+                <button className="text-[11px] text-sky-300 hover:underline" onClick={() => setOpen(open === c.id ? null : c.id)}>{open === c.id ? 'recolher' : '📖 ver roteiro do capítulo'}</button>
+              </>
+            )}
             <div className="mt-2 flex gap-1">
               {c.status !== 'ativo' && <Button size="sm" variant="gold" onClick={() => void send({ type: 'chapter.activate', id: c.id })}>Iniciar</Button>}
               {c.status === 'ativo' && <Button size="sm" variant="subtle" onClick={() => void send({ type: 'chapter.update', id: c.id, status: 'concluido' })}>Concluir</Button>}
@@ -42,7 +69,7 @@ export function QuestsPanel({ state }: { state: ProjectedState }) {
     const t = setInterval(() => tick((x) => x + 1), 1000);
     return () => clearInterval(t);
   }, []);
-  const [f, setF] = useState({ title: '', description: '', target: '1', reward: '', hidden: false, timerKind: 'nenhum' as 'nenhum' | 'rodadas' | 'segundos', timer: '3', message: '', spawn: '', sx: '0', sy: '0' });
+  const [f, setF] = useState({ title: '', description: '', target: '1', reward: '', xp: '0', dracmas: '0', hidden: false, timerKind: 'nenhum' as 'nenhum' | 'rodadas' | 'segundos', timer: '3', message: '', spawn: '', sx: '0', sy: '0' });
   const set = (k: keyof typeof f, v: string | boolean) => setF({ ...f, [k]: v });
 
   function create() {
@@ -53,6 +80,9 @@ export function QuestsPanel({ state }: { state: ProjectedState }) {
       hidden: f.hidden,
       target: Math.max(1, Number(f.target) || 1),
       reward: f.reward,
+      rewardXp: Math.max(0, Number(f.xp) || 0),
+      rewardDracmas: Math.max(0, Number(f.dracmas) || 0),
+      rewardItems: [],
       expiresInRounds: f.timerKind === 'rodadas' ? Number(f.timer) : undefined,
       expiresInSeconds: f.timerKind === 'segundos' ? Math.max(10, Number(f.timer)) : undefined,
       onExpire: f.message || f.spawn ? { message: f.message || undefined, spawn: f.spawn ? { monsterKey: f.spawn, x: Number(f.sx), y: Number(f.sy), hidden: false } : undefined } : undefined,
@@ -76,9 +106,12 @@ export function QuestsPanel({ state }: { state: ProjectedState }) {
               {secs !== null && q.status === 'ativa' && ` · ⏳ ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`}
               {q.expiresAtRound !== null && ` · ⏳ fim da rodada ${q.expiresAtRound}`}
               {q.onExpire?.spawn && ` · gatilho: ${q.onExpire.spawn.monsterKey}`}
+              {(q.rewardXp || q.rewardDracmas) ? ` · 🎁 ${q.rewardXp ? `${q.rewardXp} XP` : ''}${q.rewardXp && q.rewardDracmas ? ' + ' : ''}${q.rewardDracmas ? `${q.rewardDracmas} dracmas` : ''}` : ''}
             </p>
+            {q.description && <p className="mt-1 whitespace-pre-line text-xs text-slate-400">{q.description}</p>}
             {q.status === 'ativa' && (
               <div className="mt-2 flex flex-wrap gap-1">
+                <Button size="sm" variant="gold" onClick={() => void send({ type: 'quest.update', id: q.id, status: 'concluida' })}>✅ Concluir</Button>
                 <Button size="sm" variant="subtle" onClick={() => void send({ type: 'quest.progress', id: q.id, delta: 1 })}>+1</Button>
                 <Button size="sm" variant="subtle" onClick={() => void send({ type: 'quest.progress', id: q.id, delta: -1 })}>−1</Button>
                 <Button size="sm" variant="ghost" onClick={() => void send({ type: 'quest.update', id: q.id, hidden: !q.hidden })}>{q.hidden ? 'Revelar' : 'Ocultar'}</Button>
@@ -94,7 +127,11 @@ export function QuestsPanel({ state }: { state: ProjectedState }) {
         <TextArea label="Descrição" value={f.description} onChange={(v) => set('description', v)} rows={2} />
         <div className="grid grid-cols-2 gap-2">
           <Field label="Meta (contador)" type="number" value={f.target} onChange={(e) => set('target', e.target.value)} />
-          <Field label="Recompensa" value={f.reward} onChange={(e) => set('reward', e.target.value)} />
+          <Field label="Recompensa (texto)" value={f.reward} onChange={(e) => set('reward', e.target.value)} />
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="XP para cada herói" type="number" value={f.xp} onChange={(e) => set('xp', e.target.value)} hint="Entregue sozinho ao concluir" />
+          <Field label="Dracmas para cada herói" type="number" value={f.dracmas} onChange={(e) => set('dracmas', e.target.value)} />
         </div>
         <div className="grid grid-cols-2 gap-2">
           <Select label="Tempo limite" value={f.timerKind} onChange={(v) => set('timerKind', v)} options={[{ value: 'nenhum', label: 'Sem limite' }, { value: 'rodadas', label: 'Rodadas de combate' }, { value: 'segundos', label: 'Segundos (tempo real)' }]} />

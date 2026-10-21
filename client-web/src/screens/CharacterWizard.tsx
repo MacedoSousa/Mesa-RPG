@@ -6,7 +6,7 @@ import {
   type AbilityScores, type CharacterBuild, type CharacterCreationInput, type ClassKey, type DivinityKey, type Equipment,
   type ItemDef, type RaceKey, type Skill,
 } from '@mesa/shared';
-import { Badge, Button, Card, Field, Term, TextArea, api, cx, errorMessage, navigate, toast, TokenAvatar } from '@mesa/common';
+import { Badge, Button, Card, Field, PortraitEditor, Term, TextArea, api, cx, errorMessage, navigate, randomPortrait, toast, TokenAvatar, type PortraitSpec } from '@mesa/common';
 import type { CharacterDTO } from '../types';
 
 const STEPS = ['Raça', 'Pai Olímpico', 'Atributos', 'Inventário', 'Revisão'];
@@ -25,6 +25,7 @@ export function CharacterWizard() {
   const [equipment, setEquipment] = useState<Equipment>({});
   const [name, setName] = useState('');
   const [backstory, setBackstory] = useState('');
+  const [portrait, setPortrait] = useState<PortraitSpec | null>(null);
   const [busy, setBusy] = useState(false);
 
   const raceDef = RACES[race];
@@ -113,7 +114,8 @@ export function CharacterWizard() {
   async function submit() {
     setBusy(true);
     try {
-      const r = await api<{ character: CharacterDTO }>('/characters', { method: 'POST', json: { ...input, name } });
+      const face = portrait ?? randomPortrait(`${name || 'heroi'}-${race}`, race);
+      const r = await api<{ character: CharacterDTO }>('/characters', { method: 'POST', json: { ...input, name, portrait: face } });
       toast(`${r.character.name} está pronto(a) para a aventura!`, 'sucesso');
       navigate(`/personagem/${r.character.id}`);
     } catch (e) {
@@ -329,6 +331,9 @@ export function CharacterWizard() {
               <Field label="Nome do herói" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} required />
               <TextArea label="História (opcional)" value={backstory} onChange={setBackstory} />
             </div>
+          </Card>
+          <Card title="🎭 Rosto do herói">
+            <PortraitEditor value={portrait} onChange={setPortrait} race={race} name={name} />
           </Card>
           <Card title="Revisão">
             <p className="font-display text-lg">{name || '???'} — {raceDef.label} {cls.label}, {divDef.symbol} {divDef.label}</p>

@@ -13,16 +13,28 @@ export type TerrainType =
 
 export type SurfaceType = 'fogo' | 'agua' | 'agua_eletrificada' | 'gelo' | 'oleo' | 'veneno' | 'vapor';
 
-export type ObjectType = 'barril_explosivo' | 'barril_agua' | 'barril_oleo' | 'caixote' | 'estatua' | 'braseiro';
+export type ObjectType = 'barril_explosivo' | 'barril_agua' | 'barril_oleo' | 'caixote' | 'estatua' | 'braseiro' | 'bau' | 'bau_aberto';
 
 export interface Surface {
   type: SurfaceType;
   rounds: number;
 }
 
+export interface LootEntry {
+  itemKey: string;
+  quantity: number;
+}
+
 export interface MapObject {
   type: ObjectType;
   hp: number;
+  /** Baús: conteúdo (nunca enviado aos jogadores). */
+  loot?: LootEntry[];
+  dracmas?: number;
+  /** Baú trancado: CD do teste para abrir (Prestidigitação/DES ou Atletismo/FOR). */
+  lockDc?: number;
+  /** Projeção para jogadores: só sabem SE está trancado. */
+  locked?: boolean;
 }
 
 export interface Tile {
@@ -33,6 +45,9 @@ export interface Tile {
   o?: MapObject | null;
 }
 
+/** Ambiente visual: muda luz, cores e efeitos (não afeta regras). */
+export type MapMood = 'dia' | 'noite' | 'caverna' | 'submundo' | 'olimpo';
+
 export interface MapState {
   id: string | null;
   name: string;
@@ -40,6 +55,10 @@ export interface MapState {
   width: number;
   height: number;
   tiles: Tile[];
+  mood?: MapMood;
+  /** Mapas gerados: tipo e semente (reproduzíveis). */
+  seed?: string;
+  kind?: string;
 }
 
 export type TokenKind = 'personagem' | 'monstro' | 'npc';
@@ -78,6 +97,14 @@ export interface Token {
   portrait?: string;
   /** Emblema pequeno (símbolo do pai olímpico). */
   emblem?: string;
+  /** Perícias e testes de resistência com proficiência (testes pedidos pelo Mestre). */
+  skills?: string[];
+  saves?: string[];
+  level?: number;
+  /** Salvaguardas contra a morte (heróis com 0 PV). */
+  deathSaves?: { successes: number; failures: number; stable: boolean };
+  /** Retrato gerado (PortraitSpec serializada) para desenhar o rosto do herói. */
+  face?: unknown;
 }
 
 export interface Economy {
@@ -125,7 +152,30 @@ export interface SideQuest {
   /** Expira neste instante (epoch ms) — contagem regressiva em tempo real. */
   expiresAt: number | null;
   reward: string;
+  /** Recompensa automática para todos os heróis ao concluir. */
+  rewardXp?: number;
+  rewardDracmas?: number;
+  rewardItems?: LootEntry[];
   onExpire: QuestExpireTrigger | null;
+  createdAt: number;
+}
+
+export type CheckKind = 'pericia' | 'atributo' | 'resistencia';
+
+/** Teste pedido pelo Mestre a um jogador: ele rola pelo app e o resultado vale. */
+export interface PendingCheck {
+  id: string;
+  userId: string;
+  tokenId: string;
+  kind: CheckKind;
+  key: string;
+  dc: number;
+  /** Jogador não vê a CD (vê só sucesso/falha). */
+  secretDc: boolean;
+  label: string | null;
+  status: 'pendente' | 'sucesso' | 'falha';
+  total?: number;
+  natural?: number | null;
   createdAt: number;
 }
 
@@ -165,6 +215,8 @@ export interface TableState {
   combat: CombatState | null;
   sideQuests: SideQuest[];
   players: Record<string, PlayerInfo>;
+  /** Testes pedidos pelo Mestre (pendentes e resultados recentes). */
+  checks?: PendingCheck[];
   log: LogEntry[];
   /** Incrementa a cada comando aplicado (ordem/ressincronização). */
   seq: number;

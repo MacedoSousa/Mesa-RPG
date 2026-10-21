@@ -13,6 +13,8 @@ export class GameMap extends Model<InferAttributes<GameMap>, InferCreationAttrib
   declare width: number;
   declare height: number;
   declare tiles: Tile[];
+  /** Ambiente (mood), semente e tipo de mapas gerados. */
+  declare meta: CreationOptional<{ mood?: string; seed?: string; kind?: string }>;
   declare createdBy: string | null;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
@@ -28,6 +30,7 @@ GameMap.init(
     width: { type: DataTypes.SMALLINT, allowNull: false },
     height: { type: DataTypes.SMALLINT, allowNull: false },
     tiles: { type: DataTypes.JSONB, allowNull: false },
+    meta: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
     createdBy: { type: DataTypes.UUID, allowNull: true },
     createdAt: DataTypes.DATE,
     updatedAt: DataTypes.DATE,

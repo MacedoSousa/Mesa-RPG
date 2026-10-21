@@ -1,16 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ABILITIES, ABILITY_LABELS, ITEMS, SKILLS, TERRAIN, d20Formula, formatModifier, gridDistance, reachableCells,
-  type AdvantageState, type LogEntry, type ProjectedState, type Skill, type TableState, type Token,
+  ABILITIES, ABILITY_LABELS, ITEMS, SKILLS, TERRAIN, checkLabel, checkModifier, d20Formula, formatModifier, gridDistance, reachableCells,
+  type AdvantageState, type LogEntry, type PendingCheck, type ProjectedState, type Skill, type TableState, type Token,
 } from '@mesa/shared';
 import {
   Badge, Bar, Button, LogFeed, MapCanvas, Spinner, Term, api, cx, navigate, toast, useSession, useTable,
-  type Cell, type Highlight, TokenAvatar, artKeyFor } from '@mesa/common';
+  type Cell, type Highlight, TokenAvatar, artKeyFor, isPortraitSpec, portraitUrl } from '@mesa/common';
 import type { CharacterDTO } from '../types';
 import { GuideContent } from './Guide';
 
 type Tab = 'acoes' | 'dados' | 'itens' | 'historico' | 'guia';
-type Mode = 'mover' | 'atacar' | 'cenario' | 'empurrar' | 'poder' | null;
+type Mode = 'mover' | 'atacar' | 'cenario' | 'empurrar' | 'poder' | 'bau' | null;
 
 const TABS: { key: Tab; icon: string; label: string }[] = [
   { key: 'acoes', icon: '⚔️', label: 'Ações' },
@@ -52,6 +52,17 @@ export function PlayerTable({ campaignId }: { campaignId: string }) {
 
   useCountdown(!!state?.sideQuests.some((q) => q.status === 'ativa' && q.expiresAt));
 
+  // Aviso de dano/cura no próprio personagem (o PV já é descontado sozinho pelo servidor)
+  const prevHp = useRef<number | null>(null);
+  useEffect(() => {
+    if (!me) return;
+    const before = prevHp.current;
+    prevHp.current = me.hp;
+    if (before === null || before === me.hp) return;
+    if (me.hp < before) toast(`💥 Você sofreu ${before - me.hp} de dano! PV ${me.hp}/${me.maxHp}`, 'erro');
+    else toast(`💚 Você recuperou ${me.hp - before} PV! PV ${me.hp}/${me.maxHp}`, 'sucesso');
+  }, [me?.hp, me?.maxHp, me]);
+
   if (kicked) {
     return (
       <div className="flex min-h-full flex-col items-center justify-center gap-4 p-6 text-center">
@@ -69,6 +80,7 @@ export function PlayerTable({ campaignId }: { campaignId: string }) {
   const economy = me && combat ? combat.economy[me.id] : null;
   const currentName = combat?.currentTokenId === '__oculto__' ? '???' : state.tokens.find((t) => t.id === combat?.currentTokenId)?.name;
   const activeChapter = state.chapters.find((c) => c.id === state.activeChapterId);
+  const myChecks = (state.checks ?? []).filter((c) => c.userId === user.id && c.status === 'pendente');
 
   return (
     <div className="fixed inset-0 flex flex-col overflow-hidden">
@@ -77,7 +89,9 @@ export function PlayerTable({ campaignId }: { campaignId: string }) {
         <div className="rounded-xl border border-white/10 bg-slate-950/85 p-2 shadow-xl backdrop-blur">
           <div className="flex items-center gap-2">
             <button onClick={() => navigate('/')} className="rounded-lg px-1 text-lg" aria-label="Sair da mesa">←</button>
-            {me && <TokenAvatar artKey={artKeyFor(me)} color={me.color} size={34} title={me.emblem} />}
+            {me && (isPortraitSpec(me.face)
+              ? <img src={portraitUrl(me.face, 72)} width={38} height={38} className="rounded-full border-2" style={{ borderColor: me.color }} alt="" />
+              : <TokenAvatar artKey={artKeyFor(me)} color={me.color} size={34} title={me.emblem} />)}
             {me ? (
               <div className="grid flex-1 grid-cols-2 gap-2">
                 <Bar label={`❤️ ${me.name}`} value={me.hp as number} max={me.maxHp as number} color="bg-rose-500" />
@@ -88,7 +102,8 @@ export function PlayerTable({ campaignId }: { campaignId: string }) {
           </div>
           {me && (
             <div className="mt-1 flex flex-wrap items-center gap-1 text-[11px]">
-              <Badge color="sky">🛡️ CA {me.ac}</Badge>
+              <Badge color="sky">🛡️ <Term k="ca">CA</Term> {me.ac}</Badge>
+              <Badge color="violet">⭐ Nível {me.level ?? 1}</Badge>
               {me.conditions.map((c) => <Badge key={c} color="rose">{c}</Badge>)}
               {economy && (
                 <>
@@ -101,6 +116,22 @@ export function PlayerTable({ campaignId }: { campaignId: string }) {
             </div>
           )}
         </div>
+        {myChecks.map((c) => (
+          <div key={c.id} className="rounded-lg border border-amber-400 bg-amber-950/95 p-2 text-sm shadow-lg">
+            <p className="font-semibold">🎯 O Mestre pede: {checkLabel(c.kind, c.key)}{c.dc ? ` CD ${c.dc}` : ''}{c.label ? ` — ${c.label}` : ''}</p>
+            <p className="text-xs text-amber-100/80">Toque para rolar 1d20 + seu modificador{me && ` (${formatModifier(checkModifier(me, c.kind, c.key).mod)})`}.</p>
+            <div className="mt-1 grid grid-cols-3 gap-1">
+              <Button size="sm" variant="gold" onClick={() => void send({ type: 'check.roll', checkId: c.id, advantage: 'normal' })}>🎲 Rolar</Button>
+              <Button size="sm" variant="subtle" onClick={() => void send({ type: 'check.roll', checkId: c.id, advantage: 'vantagem' })}>com vantagem</Button>
+              <Button size="sm" variant="ghost" onClick={() => void send({ type: 'check.roll', checkId: c.id, advantage: 'desvantagem' })}>desvantagem</Button>
+            </div>
+          </div>
+        ))}
+        {me && me.hp === 0 && !me.dead && me.deathSaves && (
+          <div className="rounded-lg bg-violet-950/95 p-2 text-center text-sm">
+            😵 Você está caído! No seu turno o app rola a <Term k="morte">salvaguarda contra a morte</Term>: ✔ {me.deathSaves.successes}/3 · ✖ {me.deathSaves.failures}/3{me.deathSaves.stable ? ' · estável' : ''}. Peça para um aliado te curar!
+          </div>
+        )}
         {(state.paused || state.players[user.id]?.paused) && <div className="rounded-lg bg-violet-900/90 p-2 text-center text-sm font-semibold">⏸️ {state.paused ? 'O Mestre pausou a mesa' : 'O Mestre pausou você por um momento'}</div>}
         {combat && (
           <div className={cx('rounded-lg p-2 text-center text-sm font-bold shadow-lg', myTurn ? 'bg-amber-500 text-slate-950 animate-pulse' : 'bg-slate-900/90')}>
@@ -132,8 +163,8 @@ export function PlayerTable({ campaignId }: { campaignId: string }) {
               onEndTurn={() => me && void send({ type: 'combat.endTurn', tokenId: me.id })}
             />
           )}
-          {tab === 'dados' && <DicePanel me={me} character={character} send={send} />}
-          {tab === 'itens' && <ItemsPanel me={me} character={character} canAct={canAct} send={send} />}
+          {tab === 'dados' && <DicePanel me={me} character={character} send={send} pending={myChecks} />}
+          {tab === 'itens' && <ItemsPanel me={me} character={character} canAct={canAct} send={send} allies={state.tokens.filter((t) => t.kind !== 'monstro') as Token[]} />}
           {tab === 'historico' && <HistoryPanel campaignId={campaignId} state={state} chapterTitle={activeChapter?.title} />}
           {tab === 'guia' && <GuideContent compact />}
         </div>
@@ -156,6 +187,11 @@ export function PlayerTable({ campaignId }: { campaignId: string }) {
       case 'mover':
       case null:
         if (!target) {
+          const tile = state!.map.tiles[cell.y * state!.map.width + cell.x];
+          if (tile?.o?.type === 'bau') {
+            if (await send({ type: 'object.open', tokenId: me.id, x: cell.x, y: cell.y })) setMode(null);
+            return;
+          }
           if (await send({ type: 'token.move', tokenId: me.id, x: cell.x, y: cell.y })) setMode(null);
         } else if (mode === null && target.kind === 'monstro') {
           setMode('atacar');
@@ -176,6 +212,9 @@ export function PlayerTable({ campaignId }: { campaignId: string }) {
       case 'poder':
         if (await send({ type: 'combat.power', tokenId: me.id, x: cell.x, y: cell.y })) setMode(null);
         return;
+      case 'bau':
+        if (await send({ type: 'object.open', tokenId: me.id, x: cell.x, y: cell.y })) setMode(null);
+        return;
     }
   }
 }
@@ -193,6 +232,14 @@ function highlightsFor(state: ProjectedState, me: Token, mode: Mode, attackIndex
   if ((mode === 'atacar' || mode === 'empurrar') && attack) {
     const range = mode === 'empurrar' ? 1 : (attack.longRange ?? attack.range);
     for (const t of state.tokens) if (t.id !== me.id && !t.dead && gridDistance(me, t) <= range) out.push({ x: t.x, y: t.y, color: t.kind === 'monstro' ? 0xff3b30 : 0xffcc00, alpha: 0.35 });
+  }
+  if (mode === 'bau') {
+    state.map.tiles.forEach((tile, i) => {
+      if (tile.o?.type !== 'bau') return;
+      const x = i % state.map.width;
+      const y = Math.floor(i / state.map.width);
+      out.push({ x, y, color: gridDistance(me, { x, y }) <= 1 ? 0xffd34d : 0x888888, alpha: 0.45 });
+    });
   }
   if (mode === 'cenario' && attack) {
     const range = attack.longRange ?? attack.range;
@@ -213,7 +260,7 @@ function highlightsFor(state: ProjectedState, me: Token, mode: Mode, attackIndex
 }
 
 function ModeHint({ mode, onCancel }: { mode: Exclude<Mode, null>; onCancel: () => void }) {
-  const text = { mover: 'Toque numa casa azul para mover', atacar: 'Toque num alvo em vermelho', cenario: 'Toque num objeto/parede em laranja', empurrar: 'Toque numa criatura adjacente', poder: 'Toque no ponto do mapa para o poder divino' }[mode];
+  const text = { mover: 'Toque numa casa azul para mover', atacar: 'Toque num alvo em vermelho', cenario: 'Toque num objeto/parede em laranja', empurrar: 'Toque numa criatura adjacente', poder: 'Toque no ponto do mapa para o poder divino', bau: 'Toque no baú dourado ao seu lado' }[mode];
   return (
     <div className="flex items-center justify-between rounded-lg bg-sky-900/90 p-2 text-sm">
       <span>👆 {text}</span>
@@ -248,6 +295,7 @@ function ActionsPanel(p: {
         <Button disabled={!p.canAct} variant="subtle" onClick={() => p.setMode('cenario')}>🪓 Golpear cenário</Button>
         <Button disabled={!p.canAct} variant="subtle" onClick={() => p.setMode('empurrar')}>✋ Empurrar <span className="text-[10px]">(bônus)</span></Button>
         {me.power && <Button disabled={!p.canAct} variant="gold" onClick={() => p.setMode('poder')}>✨ {me.power.label} <span className="text-[10px]">({me.power.staminaCost}⚡)</span></Button>}
+        <Button disabled={!p.canAct} variant="subtle" onClick={() => p.setMode('bau')}>🧰 Abrir baú</Button>
       </div>
       {p.inCombat && (
         <div className="grid grid-cols-3 gap-2">
@@ -262,7 +310,7 @@ function ActionsPanel(p: {
   );
 }
 
-function DicePanel({ me, character, send }: { me?: Token; character: CharacterDTO | null; send: ReturnType<typeof useTable.getState>['send'] }) {
+function DicePanel({ me, character, send, pending }: { me?: Token; character: CharacterDTO | null; send: ReturnType<typeof useTable.getState>['send']; pending: PendingCheck[] }) {
   const [adv, setAdv] = useState<AdvantageState>('normal');
   const [priv, setPriv] = useState(false);
   const [formula, setFormula] = useState('1d20');
@@ -273,6 +321,10 @@ function DicePanel({ me, character, send }: { me?: Token; character: CharacterDT
 
   return (
     <div className="space-y-3">
+      <p className="rounded-lg bg-white/5 p-2 text-xs text-slate-300">
+        Rolagens livres aparecem para todos e o Mestre pode usá-las (por exemplo, aplicar o total como dano). Quando o Mestre <strong>pedir um teste</strong>,
+        a perícia pedida pisca em verde aqui: tocar nela rola e o resultado (sucesso/falha) vale na hora.
+      </p>
       <div className="flex flex-wrap items-center gap-2">
         {(['normal', 'vantagem', 'desvantagem'] as const).map((a) => (
           <button key={a} onClick={() => setAdv(a)} className={cx('rounded-full px-3 py-1 text-sm', adv === a ? 'bg-amber-500 text-slate-950' : 'bg-white/5')}>{a}</button>
@@ -287,7 +339,16 @@ function DicePanel({ me, character, send }: { me?: Token; character: CharacterDT
           <p className="mb-1 text-sm text-slate-400"><Term k="atributos">Testes de atributo</Term></p>
           <div className="grid grid-cols-3 gap-2">
             {ABILITIES.map((a) => (
-              <Button key={a} variant="ghost" size="sm" onClick={() => rollF(d20Formula(mods[a], adv), `Teste de ${ABILITY_LABELS[a].label}`)}>
+              <Button
+                key={a}
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const req = pending.find((c) => c.kind !== 'pericia' && c.key === a);
+                  if (req) void send({ type: 'check.roll', checkId: req.id, advantage: adv });
+                  else rollF(d20Formula(mods[a], adv), `Teste de ${ABILITY_LABELS[a].label}`);
+                }}
+              >
                 {ABILITY_LABELS[a].short} {formatModifier(mods[a])}
               </Button>
             ))}
@@ -297,7 +358,15 @@ function DicePanel({ me, character, send }: { me?: Token; character: CharacterDT
             {(Object.keys(SKILLS) as Skill[]).map((s) => {
               const mod = mods[SKILLS[s].ability] + (skills.has(s) ? prof : 0);
               return (
-                <button key={s} onClick={() => rollF(d20Formula(mod, adv), SKILLS[s].label)} className={cx('rounded-full border px-2 py-1 text-xs', skills.has(s) ? 'border-amber-400/60 bg-amber-500/10' : 'border-white/10 bg-white/5')}>
+                <button
+                  key={s}
+                  onClick={() => {
+                    const req = pending.find((c) => c.kind === 'pericia' && c.key === s);
+                    if (req) void send({ type: 'check.roll', checkId: req.id, advantage: adv });
+                    else rollF(d20Formula(mod, adv), SKILLS[s].label);
+                  }}
+                  className={cx('rounded-full border px-2 py-1 text-xs', pending.some((c) => c.kind === 'pericia' && c.key === s) ? 'border-emerald-400 bg-emerald-500/20 animate-pulse' : skills.has(s) ? 'border-amber-400/60 bg-amber-500/10' : 'border-white/10 bg-white/5')}
+                >
                   {SKILLS[s].label} {formatModifier(mod)}
                 </button>
               );
@@ -314,8 +383,10 @@ function DicePanel({ me, character, send }: { me?: Token; character: CharacterDT
   );
 }
 
-function ItemsPanel({ me, character, canAct, send }: { me?: Token; character: CharacterDTO | null; canAct: boolean; send: ReturnType<typeof useTable.getState>['send'] }) {
+function ItemsPanel({ me, character, canAct, send, allies }: { me?: Token; character: CharacterDTO | null; canAct: boolean; send: ReturnType<typeof useTable.getState>['send']; allies: Token[] }) {
   const consumables = Object.entries(me?.consumables ?? {}).filter(([, q]) => q > 0);
+  // Aliados ao lado (para dar a poção a quem caiu)
+  const near = me ? allies.filter((a) => a.id !== me.id && !a.dead && Math.max(Math.abs(a.x - me.x), Math.abs(a.y - me.y)) <= 1) : [];
   return (
     <div className="space-y-3">
       <div>
@@ -326,7 +397,14 @@ function ItemsPanel({ me, character, canAct, send }: { me?: Token; character: Ch
             <div key={key} className="flex items-center gap-2 rounded-lg bg-white/5 p-2">
               <span className="text-xl">🧪</span>
               <span className="flex-1"><strong>{ITEMS[key]?.name ?? key}</strong> ×{qty}<span className="block text-xs text-slate-400">{ITEMS[key]?.description}</span></span>
-              <Button size="sm" disabled={!canAct} onClick={() => me && void send({ type: 'item.use', tokenId: me.id, itemKey: key })}>Usar</Button>
+              <div className="flex flex-col gap-1">
+                <Button size="sm" disabled={!canAct} onClick={() => me && void send({ type: 'item.use', tokenId: me.id, itemKey: key })}>Usar</Button>
+                {near.map((a) => (
+                  <Button key={a.id} size="sm" variant="subtle" disabled={!canAct} onClick={() => me && void send({ type: 'item.use', tokenId: me.id, itemKey: key, targetId: a.id })}>
+                    em {a.name}{a.hp === 0 ? ' 😵' : ''}
+                  </Button>
+                ))}
+              </div>
             </div>
           ))}
         </div>

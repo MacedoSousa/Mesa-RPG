@@ -2,7 +2,7 @@ import { z } from 'zod';
 import {
   AFFINITY_MAX, AFFINITY_MIN, CLASSES, CharacterBuild, CharacterCreationInput, CharacterSnapshot, DIVINITIES, EQUIPMENT_SLOTS,
   EquipmentSlot, ItemDef, RACES, affinityTier, characterCreationSchema, deriveStats, getDivinity, getItem, inventoryStatus,
-  validateCharacterCreation, validateEquipment,
+  validateCharacterCreation, validateEquipment, levelForXp, xpForNextLevel,
 } from '@mesa/shared';
 import type { Transaction } from 'sequelize';
 import { sequelize } from '../config/database';
@@ -56,6 +56,8 @@ export function serializeCharacter(c: Character, custom: Record<string, ItemDef>
     classLabel: CLASSES[c.classKey as keyof typeof CLASSES]?.label ?? c.classKey,
     level: c.level,
     experience: c.experience,
+    nextLevelXp: xpForNextLevel(c.level),
+    portrait: c.portrait ?? null,
     affinity: c.affinity,
     affinityTier: affinityTier(c.affinity),
     baseAbilities: c.baseAbilities,
@@ -102,6 +104,7 @@ export const CharacterService = {
         equipment: data.equipment,
         hp: stats.maxHp,
         stamina: stats.maxStamina,
+        portrait: (data.portrait as Record<string, unknown> | undefined) ?? null,
       }, { transaction });
       await CharacterSheet.create({ characterId: character.id, backstory: data.backstory ?? '' }, { transaction });
       const merged = new Map<string, number>();
@@ -185,7 +188,7 @@ export const CharacterService = {
     if (!c) return null;
     return {
       snapshot: {
-        id: c.id, userId: c.userId, name: c.name, build: buildOf(c), hp: c.hp, stamina: c.stamina,
+        id: c.id, userId: c.userId, name: c.name, build: buildOf(c), hp: c.hp, stamina: c.stamina, face: c.portrait ?? undefined,
         inventory: (c.inventory ?? []).map((i) => ({ itemKey: i.itemKey, quantity: i.quantity })),
       },
       custom: await ItemService.customItems(c.campaignId),
@@ -199,6 +202,42 @@ export const CharacterService = {
   async consumeItem(characterId: string, itemKey: string, quantity: number) {
     const inv = await InventoryItem.findOne({ where: { characterId, itemKey } });
     if (inv) await inv.update({ quantity: Math.max(0, inv.quantity - quantity) });
+  },
+
+  /** XP, dracmas e itens. Sobe de nível automaticamente pela tabela do SRD (PV máximo cresce junto). */
+  async grantReward(characterId: string, r: { xp: number; dracmas: number; items: { itemKey: string; quantity: number }[] }) {
+    return sequelize.transaction(async (transaction) => {
+      const c = await Character.findByPk(characterId, { transaction });
+      if (!c) return null;
+      const custom = await ItemService.customItems(c.campaignId);
+      const before = deriveStats(buildOf(c), custom);
+      const oldLevel = c.level;
+      const experience = c.experience + Math.max(0, r.xp);
+      const level = Math.max(oldLevel, levelForXp(experience));
+      const after = deriveStats({ ...buildOf(c), level }, custom);
+      await c.update({
+        experience,
+        level,
+        hp: Math.min(after.maxHp, c.hp + Math.max(0, after.maxHp - before.maxHp)),
+        stamina: Math.min(after.maxStamina, c.stamina + Math.max(0, after.maxStamina - before.maxStamina)),
+      }, { transaction });
+
+      const gains = [...r.items];
+      if (r.dracmas > 0) gains.push({ itemKey: 'dracmas', quantity: r.dracmas });
+      for (const g of gains) {
+        if (!getItem(g.itemKey, custom)) continue;
+        const inv = await InventoryItem.findOne({ where: { characterId, itemKey: g.itemKey }, transaction });
+        if (inv) await inv.update({ quantity: inv.quantity + g.quantity }, { transaction });
+        else await InventoryItem.create({ characterId, itemKey: g.itemKey, quantity: g.quantity }, { transaction });
+      }
+      return { name: c.name, oldLevel, level, experience, next: xpForNextLevel(level), maxHp: after.maxHp };
+    });
+  },
+
+  async setPortrait(userId: string, id: string, portrait: unknown) {
+    const c = await this.findOwned(userId, id);
+    await c.update({ portrait: portrait as Record<string, unknown> });
+    return this.get(userId, id);
   },
 
   async adjustAffinity(characterId: string, delta: number) {

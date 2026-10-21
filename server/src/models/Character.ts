@@ -21,6 +21,8 @@ export class Character extends Model<InferAttributes<Character>, InferCreationAt
   declare equipment: Equipment;
   declare hp: number;
   declare stamina: number;
+  /** Retrato gerado (PortraitSpec) — rosto único do herói. */
+  declare portrait: CreationOptional<Record<string, unknown> | null>;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
   declare deletedAt: CreationOptional<Date | null>;
@@ -45,6 +47,7 @@ Character.init(
     equipment: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
     hp: { type: DataTypes.INTEGER, allowNull: false },
     stamina: { type: DataTypes.INTEGER, allowNull: false },
+    portrait: { type: DataTypes.JSONB, allowNull: true },
     createdAt: DataTypes.DATE,
     updatedAt: DataTypes.DATE,
     deletedAt: DataTypes.DATE,

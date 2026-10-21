@@ -1,3 +1,4 @@
+import { getClass } from '../content/classes';
 import { getDivinity } from '../content/divinities';
 import { ItemDef, WeaponItem, getItem, isShield, isWeapon } from '../content/items';
 import { AttackDef, getMonster } from '../content/monsters';
@@ -15,6 +16,8 @@ export interface CharacterSnapshot {
   hp: number;
   stamina: number;
   inventory: { itemKey: string; quantity: number }[];
+  /** Retrato (PortraitSpec) para o rosto no token. */
+  face?: unknown;
 }
 
 const signed = (n: number) => (n === 0 ? '' : n > 0 ? `+${n}` : String(n));
@@ -88,6 +91,10 @@ export function tokenFromCharacter(c: CharacterSnapshot, x: number, y: number, i
     color: COLORS[index % COLORS.length],
     portrait: `classe:${c.build.classKey}`,
     emblem: divinity?.symbol,
+    skills: stats.skillProficiencies,
+    saves: [...(getClass(c.build.classKey)?.savingThrows ?? [])],
+    level: c.build.level,
+    face: c.face ?? undefined,
   };
 }
 

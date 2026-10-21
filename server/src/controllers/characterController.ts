@@ -6,6 +6,7 @@ import {
   OBJECTS, SURFACES, TERRAIN,
 } from '@mesa/shared';
 import { CharacterService } from '../services/characterService';
+import { tableManager } from '../game/TableManager';
 
 const idParam = z.object({ id: z.string().uuid('ID inválido') });
 
@@ -31,7 +32,16 @@ export const CharacterController = {
   },
   async equip(req: Request, res: Response) {
     const { id } = idParam.parse(req.params);
-    res.json({ character: await CharacterService.equip(req.actor!.userId, id, req.body) });
+    const character = await CharacterService.equip(req.actor!.userId, id, req.body);
+    if (character.campaignId) await tableManager.refreshCharacter(character.campaignId, id);
+    res.json({ character });
+  },
+  async portrait(req: Request, res: Response) {
+    const { id } = idParam.parse(req.params);
+    const spec = z.record(z.unknown()).refine((o) => JSON.stringify(o).length < 8000, 'Retrato grande demais').parse(req.body?.portrait);
+    const character = await CharacterService.setPortrait(req.actor!.userId, id, spec);
+    if (character.campaignId) await tableManager.refreshCharacter(character.campaignId, id);
+    res.json({ character });
   },
   async remove(req: Request, res: Response) {
     const { id } = idParam.parse(req.params);

@@ -63,6 +63,11 @@ function nextState(s: Socket, predicate: (p: StatePayload) => boolean = () => tr
   });
 }
 
+async function loginAs(username: string): Promise<TestUser> {
+  const res = await request(app).post('/api/auth/login').send({ login: username, password: 'senha-forte-123' }).expect(200);
+  return { id: res.body.user.id, username, role: res.body.user.role, accessToken: res.body.accessToken, cookie: '' };
+}
+
 async function setupTable() {
   await resetData();
   const master = await registerUser('quiron');
@@ -187,5 +192,46 @@ describe('WebSockets: Host ↔ Jogadores', () => {
     expect(asMaster.body.events.some((e: { type: string }) => e.type === 'dado')).toBe(true);
     expect(asPlayer.body.events.some((e: { type: string }) => e.type === 'dado')).toBe(false);
     expect(asPlayer.body.events.some((e: { text: string }) => e.text.includes('ponte'))).toBe(true);
+  });
+
+  it('XP de quest e de recompensa salva na ficha, sobe de nível e entrega itens/dracmas', async () => {
+    const { char, ms, ps, playerState } = await setupTable();
+    const tokenId = playerState.state.tokens.find((t) => t.characterId === char.id)!.id;
+    const before = await request(app).get(`/api/characters/${char.id}`).set(auth(await loginAs('percy')));
+    expect(before.body.character.level).toBe(1);
+
+    const r1 = await cmd(ms, { type: 'reward.grant', tokenIds: 'todos', xp: 300, dracmas: 15, items: [{ itemKey: 'nectar', quantity: 2 }], reason: 'teste' });
+    expect(r1.ok).toBe(true);
+    const after = (await request(app).get(`/api/characters/${char.id}`).set(auth(await loginAs('percy')))).body.character;
+    expect(after.level).toBe(2);
+    expect(after.experience).toBe(300);
+    expect(after.stats.maxHp).toBeGreaterThan(before.body.character.stats.maxHp);
+    expect(after.inventory.find((i: { itemKey: string }) => i.itemKey === 'dracmas').quantity).toBe(15);
+    expect(after.inventory.find((i: { itemKey: string }) => i.itemKey === 'nectar').quantity).toBe(2);
+    const tok = tables.getState(playerState.state.campaignId)!.tokens.find((t) => t.id === tokenId)!;
+    expect(tok.level).toBe(2);
+    expect(tok.maxHp).toBe(after.stats.maxHp);
+
+    // Baú ao lado do herói: abrir guarda o loot no inventário
+    const st = tables.getState(playerState.state.campaignId)!;
+    const free = [[1, 0], [0, 1], [-1, 0], [0, -1]].map(([dx, dy]) => ({ x: tok.x + dx, y: tok.y + dy }))
+      .find((c) => st.map.tiles[c.y * st.map.width + c.x] && ['grama', 'terra', 'pedra'].includes(st.map.tiles[c.y * st.map.width + c.x].t) && !st.map.tiles[c.y * st.map.width + c.x].o)!;
+    expect((await cmd(ms, { type: 'chest.place', x: free.x, y: free.y, loot: [{ itemKey: 'ambrosia', quantity: 1 }], dracmas: 5 })).ok).toBe(true);
+    const open = await cmd(ps, { type: 'object.open', tokenId, x: free.x, y: free.y });
+    expect(open.ok).toBe(true);
+    const inv = (await request(app).get(`/api/characters/${char.id}`).set(auth(await loginAs('percy')))).body.character.inventory;
+    expect(inv.find((i: { itemKey: string }) => i.itemKey === 'ambrosia').quantity).toBe(1);
+    expect(inv.find((i: { itemKey: string }) => i.itemKey === 'dracmas').quantity).toBe(20);
+  });
+
+  it('teste pedido pelo Mestre é rolado pelo jogador e registrado', async () => {
+    const { ms, ps, player } = await setupTable();
+    expect((await cmd(ms, { type: 'check.request', userIds: 'todos', kind: 'pericia', key: 'percepcao', dc: 1, secretDc: false })).ok).toBe(true);
+    const waiting = nextState(ps, (p) => (p.state.checks ?? []).some((c) => c.status !== 'pendente'));
+    const st = (await emit<StatePayload>(ps, EVENTS.RESYNC, {})) as { ok: true; data: StatePayload };
+    const check = st.data.state.checks!.find((c) => c.userId === player.id)!;
+    expect((await cmd(ps, { type: 'check.roll', checkId: check.id, advantage: 'normal' })).ok).toBe(true);
+    const done = (await waiting).state.checks!.find((c) => c.id === check.id)!;
+    expect(done.status).toBe('sucesso');
   });
 });

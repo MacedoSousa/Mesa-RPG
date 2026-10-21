@@ -34,6 +34,7 @@ export function buildRoutes(opts: { authRateLimit?: boolean } = {}) {
   r.get('/characters/:id', requireAuth, CharacterController.get);
   r.patch('/characters/:id', requireAuth, CharacterController.update);
   r.post('/characters/:id/equip', requireAuth, CharacterController.equip);
+  r.put('/characters/:id/portrait', requireAuth, CharacterController.portrait);
   r.delete('/characters/:id', requireAuth, CharacterController.remove);
   r.post('/characters/:id/restore', requireAuth, CharacterController.restore);
 

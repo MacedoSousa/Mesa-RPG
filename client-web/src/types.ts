@@ -14,6 +14,8 @@ export interface CharacterDTO {
   classLabel: string;
   level: number;
   experience: number;
+  nextLevelXp: number | null;
+  portrait: Record<string, unknown> | null;
   affinity: number;
   affinityTier: string;
   baseAbilities: AbilityScores;

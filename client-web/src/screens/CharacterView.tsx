@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ABILITIES, ABILITY_LABELS, SKILLS, formatModifier, type EquipmentSlot, type Skill } from '@mesa/shared';
-import { Badge, Bar, Button, Card, Modal, Spinner, Term, TextArea, api, cx, errorMessage, navigate, toast } from '@mesa/common';
+import { Badge, Bar, Button, Card, Modal, PortraitEditor, Spinner, Term, TextArea, api, cx, errorMessage, isPortraitSpec, navigate, portraitUrl, randomPortrait, toast, type PortraitSpec } from '@mesa/common';
 import type { CharacterDTO } from '../types';
 
 const SLOT_FOR: Record<string, EquipmentSlot> = { arma: 'mainHand', armadura: 'armor', escudo: 'shield' };
@@ -9,6 +9,7 @@ export function CharacterView({ id }: { id: string }) {
   const [c, setC] = useState<CharacterDTO | null>(null);
   const [notes, setNotes] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editFace, setEditFace] = useState<PortraitSpec | null>(null);
 
   useEffect(() => {
     api<{ character: CharacterDTO }>(`/characters/${id}`)
@@ -64,11 +65,25 @@ export function CharacterView({ id }: { id: string }) {
       </header>
 
       <Card>
+        <div className="flex items-start gap-4">
+        <button onClick={() => setEditFace(isPortraitSpec(c.portrait) ? c.portrait : randomPortrait(c.name, c.race))} title="Editar rosto" className="shrink-0">
+          <img src={portraitUrl(isPortraitSpec(c.portrait) ? c.portrait : randomPortrait(c.name, c.race), 112)} width={96} height={96} className="rounded-full shadow-lg" alt="" />
+          <span className="mt-1 block text-center text-[11px] text-sky-300">🎭 editar rosto</span>
+        </button>
+        <div className="flex-1">
         <h1 className="font-display text-2xl text-amber-200">{c.name}</h1>
         <p className="text-slate-300">{c.raceLabel} · {c.classLabel} nível {c.level}</p>
+        <div className="mt-1 max-w-xs">
+          <div className="flex justify-between text-xs text-slate-400"><span>⭐ {c.experience} XP</span><span>{c.nextLevelXp ? `nível ${c.level + 1} em ${c.nextLevelXp} XP` : 'nível máximo'}</span></div>
+          <div className="mt-0.5 h-2 overflow-hidden rounded-full bg-white/10">
+            <div className="h-full bg-violet-400" style={{ width: `${c.nextLevelXp ? Math.min(100, (c.experience / c.nextLevelXp) * 100) : 100}%` }} />
+          </div>
+        </div>
         <div className="mt-2 flex flex-wrap gap-2">
           <Badge color="amber">{c.divinityLabel}</Badge>
           <Badge color="violet"><Term k="afinidade">Afinidade</Term> {c.affinity} — {c.affinityTier}</Badge>
+        </div>
+        </div>
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <Bar label="❤️ PV" value={c.hp} max={s.maxHp} color="bg-rose-500" />
@@ -129,6 +144,27 @@ export function CharacterView({ id }: { id: string }) {
         <Button className="mt-2" size="sm" onClick={saveNotes}>Salvar anotações</Button>
       </Card>
 
+      <Modal open={!!editFace} onClose={() => setEditFace(null)} title="🎭 Rosto do herói">
+        {editFace && <PortraitEditor value={editFace} onChange={setEditFace} race={c.race} name={c.name} />}
+        <div className="mt-3 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setEditFace(null)}>Cancelar</Button>
+          <Button
+            variant="gold"
+            onClick={async () => {
+              try {
+                const r = await api<{ character: CharacterDTO }>(`/characters/${c.id}/portrait`, { method: 'PUT', json: { portrait: editFace } });
+                setC(r.character);
+                setEditFace(null);
+                toast('Rosto salvo! Se você estiver numa mesa, o token já mudou.', 'sucesso');
+              } catch (e) {
+                toast(errorMessage(e), 'erro');
+              }
+            }}
+          >
+            Salvar rosto
+          </Button>
+        </div>
+      </Modal>
       <Modal open={confirmDelete} onClose={() => setConfirmDelete(false)} title="Excluir personagem?">
         <p className="text-slate-300">{c.name} vai para a lixeira. Você pode restaurá-lo depois na tela inicial.</p>
         <div className="mt-4 flex justify-end gap-2">

@@ -1,5 +1,5 @@
 import { OBJECTS } from '../engine/map';
-import type { MapState, ObjectType, TerrainType, Tile } from '../engine/types';
+import type { MapMood, MapState, ObjectType, TerrainType, Tile } from '../engine/types';
 
 /**
  * Mapas padrão desenhados em ASCII (1 caractere = 1 casa de 1,5 m).
@@ -24,6 +24,7 @@ export interface PresetMap {
   rows: string[];
   /** Pontos de entrada sugeridos para os heróis. */
   spawns: { x: number; y: number }[];
+  mood?: MapMood;
 }
 
 export const PRESET_MAPS: PresetMap[] = [
@@ -54,6 +55,7 @@ export const PRESET_MAPS: PresetMap[] = [
   },
   {
     key: 'submundo',
+    mood: 'submundo',
     name: 'Submundo (Reino de Hades)',
     description: 'Cavernas de pedra negra, o Rio Estige cortando o mapa, lava borbulhando e o palácio do senhor dos mortos.',
     floor: 'pedra',
@@ -79,6 +81,7 @@ export const PRESET_MAPS: PresetMap[] = [
   },
   {
     key: 'olimpo',
+    mood: 'olimpo',
     name: 'Monte Olimpo',
     description: 'Salões de mármore sobre as nuvens, tronos elevados, estátuas dos deuses e bordas que dão direto para o abismo do céu.',
     floor: 'marmore',
@@ -145,5 +148,5 @@ export function buildPresetMap(key: string): MapState {
       } else throw new Error(`Mapa ${key}: caractere desconhecido "${ch}"`);
     }
   }
-  return { id: null, name: preset.name, preset: key, width, height, tiles };
+  return { id: null, name: preset.name, preset: key, width, height, tiles, mood: preset.mood ?? 'dia' };
 }

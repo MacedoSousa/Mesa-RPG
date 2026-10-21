@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { CONDITIONS, CONDITION_KEYS, type ProjectedState, type Token } from '@mesa/shared';
-import { Badge, Button, Field, TokenAvatar, artKeyFor, cx, useTable } from '@mesa/common';
+import { CONDITIONS, CONDITION_KEYS, DAMAGE_TYPES, type DamageType, type ProjectedState, type Token } from '@mesa/shared';
+import { Badge, Button, Field, Select, TokenAvatar, artKeyFor, cx, useTable } from '@mesa/common';
+import type { Tool } from '../tools';
 
-export function CombatPanel({ state, selectedId, onSelect }: { state: ProjectedState; selectedId: string | null; onSelect: (id: string | null) => void }) {
+export function CombatPanel({ state, selectedId, onSelect, setTool }: { state: ProjectedState; selectedId: string | null; onSelect: (id: string | null) => void; setTool: (t: Tool) => void }) {
   const send = useTable((s) => s.send);
   const combat = state.combat;
   const [picked, setPicked] = useState<string[]>([]);
@@ -56,18 +57,38 @@ export function CombatPanel({ state, selectedId, onSelect }: { state: ProjectedS
           </ol>
         </>
       )}
-      {selectedId && byId(selectedId) && <TokenInspector token={byId(selectedId)!} onClose={() => onSelect(null)} />}
+      {selectedId && byId(selectedId) && <TokenInspector token={byId(selectedId)!} onClose={() => onSelect(null)} setTool={setTool} lastRoll={lastRoll(state)} />}
     </div>
   );
 }
 
 /** Edição rápida do token selecionado (PV, condições, visibilidade, ataques). */
-export function TokenInspector({ token, onClose }: { token: Token; onClose: () => void }) {
+/** Último resultado de dado no registro (para aplicar como dano/cura). */
+function lastRoll(state: ProjectedState): { total: number; text: string } | null {
+  for (let i = state.log.length - 1; i >= 0; i--) {
+    const e = state.log[i];
+    if (e.type === 'dado' && typeof e.data?.total === 'number') return { total: e.data.total as number, text: e.text };
+  }
+  return null;
+}
+
+export function TokenInspector({ token, onClose, setTool, lastRoll: last }: { token: Token; onClose: () => void; setTool: (t: Tool) => void; lastRoll: { total: number; text: string } | null }) {
   const send = useTable((s) => s.send);
   const [hp, setHp] = useState(String(token.hp));
+  const [dmg, setDmg] = useState('');
+  const [dmgType, setDmgType] = useState<DamageType>('cortante');
   const combat = useTable((s) => s.state?.combat);
   const isTurn = combat?.currentTokenId === token.id;
+  const inCombat = !!combat?.order.some((e) => e.tokenId === token.id);
+  const canAct = token.kind !== 'personagem' && !token.dead && (!inCombat || isTurn);
+  const eco = combat?.economy[token.id];
   const patch = (p: Record<string, unknown>) => void send({ type: 'token.update', tokenId: token.id, patch: p });
+  const applyHp = (heal: boolean, value?: number) => {
+    const isFormula = /d/i.test(dmg);
+    const amount = value ?? (isFormula ? undefined : Number(dmg));
+    if (value === undefined && !isFormula && !(amount! >= 0)) return;
+    void send({ type: 'token.damage', tokenIds: [token.id], ...(amount !== undefined ? { amount } : { formula: dmg }), damageType: dmgType, heal, half: false, source: 'Mestre' });
+  };
 
   return (
     <div className="space-y-2 rounded-xl border border-sky-400/30 bg-sky-950/30 p-3">
@@ -79,15 +100,52 @@ export function TokenInspector({ token, onClose }: { token: Token; onClose: () =
         <Badge color="rose">PV {token.hp}/{token.maxHp}</Badge>
         <Badge color="sky">CA {token.ac}</Badge>
         <Badge>Desl. {token.speed}</Badge>
+        {token.level && <Badge color="violet">Nível {token.level}</Badge>}
         {token.kind === 'personagem' && <Badge color="amber">Estamina {token.stamina}/{token.maxStamina}</Badge>}
         {token.resistances.map((r) => <Badge key={r} color="emerald">{r}</Badge>)}
       </div>
-      <div className="flex items-end gap-2">
-        <Field label="PV" type="number" value={hp} onChange={(e) => setHp(e.target.value)} className="w-24" />
-        <Button size="sm" onClick={() => patch({ hp: Math.max(0, Number(hp) || 0) })}>Definir</Button>
-        <Button size="sm" variant="danger" onClick={() => patch({ hp: Math.max(0, token.hp - 5) })}>−5</Button>
-        <Button size="sm" variant="subtle" onClick={() => patch({ hp: token.hp + 5 })}>+5</Button>
+      {canAct && token.attacks.length > 0 && (
+        <div className="space-y-2 rounded-lg border border-rose-400/40 bg-rose-950/30 p-2">
+          <p className="text-xs font-semibold text-rose-200">
+            {inCombat ? '⚔️ Turno deste monstro' : '⚔️ Ações (fora de combate)'}
+            {eco && <span className="ml-2 font-normal text-slate-300">Ação {eco.action} · Mov. {eco.movement}</span>}
+          </p>
+          <div className="flex flex-wrap gap-1">
+            {token.attacks.map((a, i) => (
+              <Button key={i} size="sm" variant="danger" onClick={() => setTool({ kind: 'attack', attackerId: token.id, attackIndex: i, label: `${token.name}: ${a.name}` })}>
+                {a.name} (+{a.toHit}, {a.damage})
+              </Button>
+            ))}
+          </div>
+          <Button size="sm" variant="gold" className="w-full" onClick={() => void send({ type: 'combat.auto', tokenId: token.id })}>🤖 Agir sozinho (anda e ataca o mais próximo)</Button>
+          <p className="text-[11px] text-slate-400">Escolha um golpe e clique no alvo (alvos ao alcance ficam vermelhos). Para mover, clique numa casa vazia.</p>
+        </div>
+      )}
+      <div className="space-y-2 rounded-lg border border-white/10 p-2">
+        <p className="text-xs font-semibold text-slate-200">💥 Dano / 💚 Cura</p>
+        <div className="grid grid-cols-[1fr_1fr] gap-2">
+          <Field label="Valor ou fórmula" value={dmg} onChange={(e) => setDmg(e.target.value)} placeholder="7 ou 2d6+3" />
+          <Select label="Tipo" value={dmgType} onChange={(v) => setDmgType(v as DamageType)} options={DAMAGE_TYPES.map((d) => ({ value: d, label: d }))} />
+        </div>
+        <div className="flex flex-wrap gap-1">
+          <Button size="sm" variant="danger" disabled={!dmg.trim()} onClick={() => applyHp(false)}>Aplicar dano</Button>
+          <Button size="sm" variant="subtle" disabled={!dmg.trim()} onClick={() => applyHp(true)}>Curar</Button>
+          {last && (
+            <>
+              <Button size="sm" variant="danger" title={last.text} onClick={() => applyHp(false, last.total)}>🎲 Última rolagem ({last.total}) como dano</Button>
+              <Button size="sm" variant="subtle" title={last.text} onClick={() => applyHp(true, last.total)}>como cura</Button>
+            </>
+          )}
+        </div>
+        <p className="text-[11px] text-slate-400">Resistências e "molhado" são aplicados sozinhos. O PV dos heróis é salvo na ficha.</p>
+        <div className="flex items-end gap-2">
+          <Field label="Definir PV" type="number" value={hp} onChange={(e) => setHp(e.target.value)} className="w-24" />
+          <Button size="sm" onClick={() => patch({ hp: Math.max(0, Number(hp) || 0) })}>Definir</Button>
+        </div>
       </div>
+      {token.deathSaves && token.hp === 0 && !token.dead && (
+        <p className="rounded bg-violet-950/50 px-2 py-1 text-xs">Salvaguardas contra a morte: ✔ {token.deathSaves.successes}/3 · ✖ {token.deathSaves.failures}/3{token.deathSaves.stable ? ' · estável' : ''}</p>
+      )}
       <div className="flex flex-wrap gap-1">
         {CONDITION_KEYS.map((c) => {
           const on = token.conditions.includes(c);
@@ -114,7 +172,7 @@ export function TokenInspector({ token, onClose }: { token: Token; onClose: () =
           {token.attacks.map((a, i) => <p key={i}>⚔️ {a.name}: +{a.toHit} · {a.damage} {a.damageType} · alcance {a.range}</p>)}
         </div>
       )}
-      <p className="text-[11px] text-slate-400">Com o token selecionado, clique no mapa para movê-lo (no turno dele usa o movimento; fora do turno, teleporta). Clique em outro token para atacá-lo no turno deste.</p>
+      <p className="text-[11px] text-slate-400">Com o token selecionado, clique numa casa vazia para movê-lo (no turno dele gasta movimento; fora do turno, teleporta). Clicar num inimigo ataca com o primeiro golpe.</p>
     </div>
   );
 }

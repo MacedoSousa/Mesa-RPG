@@ -1,7 +1,8 @@
 import type { Condition } from '../content/conditions';
 import type { DamageType } from '../content/items';
+import { getMonster } from '../content/monsters';
 import { roll } from '../dice';
-import type { EngineContext } from './context';
+import { grantReward, partyTokens, type EngineContext } from './context';
 import type { TableState, Token } from './types';
 
 export function findToken(state: TableState, id: string): Token | undefined {
@@ -50,6 +51,7 @@ export function damageToken(ctx: EngineContext, t: Token, amount: number, type: 
     t.tempHp -= absorbed;
     remaining -= absorbed;
   }
+  const wasDown = t.hp === 0;
   t.hp = Math.max(0, t.hp - remaining);
   ctx.emit({ type: 'dano', tokenId: t.id, amount: dmg, damageType: type });
 
@@ -57,12 +59,23 @@ export function damageToken(ctx: EngineContext, t: Token, amount: number, type: 
 
   if (t.hp === 0) {
     if (t.kind === 'personagem') {
-      addCondition(t, 'inconsciente');
-      addCondition(t, 'caido');
-      ctx.log(`${t.name} cai inconsciente! (${source})`, { type: 'combate' });
+      if (wasDown && dmg > 0) {
+        // Dano em quem já está caído: uma falha na salvaguarda contra a morte
+        const ds = (t.deathSaves ??= { successes: 0, failures: 0, stable: false });
+        ds.stable = false;
+        ds.failures += 1;
+        ctx.log(`💀 ${t.name} sofre dano caído: falha na salvaguarda contra a morte (${ds.failures}/3)`, { type: 'combate' });
+        if (ds.failures >= 3) killHero(ctx, t);
+      } else if (!wasDown) {
+        addCondition(t, 'inconsciente');
+        addCondition(t, 'caido');
+        t.deathSaves = { successes: 0, failures: 0, stable: false };
+        ctx.log(`${t.name} cai inconsciente! (${source}) — no turno dele(a), rola salvaguardas contra a morte.`, { type: 'combate' });
+      }
     } else {
       t.dead = true;
       ctx.log(`${t.name} foi derrotado! (${source})`, { type: 'combate' });
+      awardMonsterXp(ctx, t);
     }
   }
   syncCharacter(ctx, t);
@@ -73,7 +86,10 @@ export function healToken(ctx: EngineContext, t: Token, amount: number) {
   if (t.dead) return 0;
   const before = t.hp;
   t.hp = Math.min(t.maxHp, t.hp + amount);
-  if (t.hp > 0) removeCondition(t, 'inconsciente');
+  if (t.hp > 0) {
+    removeCondition(t, 'inconsciente');
+    t.deathSaves = undefined;
+  }
   const healed = t.hp - before;
   ctx.emit({ type: 'cura', tokenId: t.id, amount: healed });
   syncCharacter(ctx, t);
@@ -106,4 +122,45 @@ export function hpStatus(t: Token): 'ileso' | 'ferido' | 'gravemente ferido' | '
   if (ratio >= 1) return 'ileso';
   if (ratio > 0.5) return 'ferido';
   return 'gravemente ferido';
+}
+
+/** XP do monstro dividido igualmente entre os heróis na mesa (regra do SRD). */
+export function awardMonsterXp(ctx: EngineContext, monster: Token) {
+  const def = monster.monsterKey ? getMonster(monster.monsterKey) : undefined;
+  const party = partyTokens(ctx.state);
+  if (!def || !def.xp || !party.length) return;
+  const each = Math.max(1, Math.floor(def.xp / party.length));
+  for (const h of party) grantReward(ctx, h.characterId!, { xp: each, reason: `derrotar ${monster.name}` });
+  ctx.log(`⭐ +${each} XP para cada herói por derrotar ${monster.name}`, { type: 'recompensa' });
+}
+
+export function killHero(ctx: EngineContext, t: Token) {
+  t.dead = true;
+  removeCondition(t, 'inconsciente');
+  ctx.log(`☠️ ${t.name} morreu. O Mestre pode decidir se há um preço para voltar do Submundo…`, { type: 'combate' });
+}
+
+/** Salvaguarda contra a morte (SRD): 10+ sucesso, 1 = duas falhas, 20 = volta com 1 PV. */
+export function deathSave(ctx: EngineContext, t: Token) {
+  const ds = (t.deathSaves ??= { successes: 0, failures: 0, stable: false });
+  if (ds.stable || t.dead) return;
+  const r = roll('1d20', ctx.rng);
+  const n = r.total;
+  if (n === 20) {
+    t.hp = 1;
+    removeCondition(t, 'inconsciente');
+    t.deathSaves = undefined;
+    ctx.log(`🌟 ${t.name} tira 20 natural na salvaguarda contra a morte e se levanta com 1 PV!`, { type: 'combate' });
+    syncCharacter(ctx, t);
+    return;
+  }
+  if (n === 1) ds.failures += 2;
+  else if (n >= 10) ds.successes += 1;
+  else ds.failures += 1;
+  ctx.log(`🎲 ${t.name} — salvaguarda contra a morte: ${n} (${n >= 10 ? 'sucesso' : 'falha'}) · ✔ ${ds.successes}/3 · ✖ ${Math.min(3, ds.failures)}/3`, { type: 'combate' });
+  if (ds.failures >= 3) killHero(ctx, t);
+  else if (ds.successes >= 3) {
+    ds.stable = true;
+    ctx.log(`🩹 ${t.name} está estável (inconsciente, mas fora de perigo).`, { type: 'combate' });
+  }
 }

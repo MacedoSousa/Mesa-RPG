@@ -149,6 +149,38 @@ export const ART: Record<string, { label: string; svg: string }> = {
     svg: F('M9 40 C15 23 37 19 51 27 C57 31 59 37 55 40 C47 45 29 47 9 40 Z') + F('M10 40 L2 31 L3 49 Z') + F('M30 43 L24 53 L36 45 Z') + C(48, 31, 2, INK, false) + D('M53 36 L58 37', 2),
   },
 
+  'monstro:erinia': {
+    label: 'Fúria',
+    svg: F('M30 28 C18 14 8 12 2 16 C8 24 14 30 26 36 Z', '#a78bfa') + F('M34 28 C46 14 56 12 62 16 C56 24 50 30 38 36 Z', '#a78bfa') +
+      C(32, 32, 10) + D('M27 30 L30 32 M37 30 L34 32', 2.5) + D('M28 37 Q32 35 36 37', 2) + S('M40 42 Q52 48 50 58', 3) + C(50, 58, 2.5, '#f97316', false),
+  },
+  'monstro:equidna': {
+    label: 'Equidna',
+    svg: S('M32 38 C20 44 14 52 24 56 C34 60 46 54 52 46', 7) + C(32, 22, 11) + S('M24 14 Q20 6 16 8 M40 14 Q44 6 48 8', 2.5) +
+      D('M28 21 L30 23 M36 21 L34 23', 2.5) + D('M29 28 Q32 31 35 28', 2),
+  },
+  'monstro:procrustes': {
+    label: 'Procrustes',
+    svg: F('M6 40 L58 40 L58 50 L6 50 Z', '#94a3b8') + S('M8 50 L8 58 M56 50 L56 58', 4) + C(20, 30, 8) + F('M28 26 L54 26 L54 38 L28 38 Z') +
+      S('M40 14 L52 24', 5) + F('M36 8 L46 8 L46 16 L36 16 Z', '#64748b'),
+  },
+  'monstro:aranha_automato': {
+    label: 'Aranha Autômato',
+    svg: S('M22 30 L8 20 L4 30 M22 34 L6 38 L4 48 M42 30 L56 20 L60 30 M42 34 L58 38 L60 48 M26 38 L18 54 M38 38 L46 54', 3) +
+      C(32, 32, 12, '#f59e0b') + C(32, 32, 5, INK, false) + C(28, 24, 2, '#ef4444', false) + C(36, 24, 2, '#ef4444', false),
+  },
+  'monstro:cerbero': {
+    label: 'Cérbero',
+    svg: F('M4 22 L12 30 L20 22 L20 36 C20 44 4 44 4 36 Z') + F('M22 14 L32 24 L42 14 L42 32 C42 42 22 42 22 32 Z') + F('M44 22 L52 30 L60 22 L60 36 C60 44 44 44 44 36 Z') +
+      C(10, 34, 1.8, '#ef4444', false) + C(15, 34, 1.8, '#ef4444', false) + C(28, 29, 2.2, '#ef4444', false) + C(36, 29, 2.2, '#ef4444', false) + C(49, 34, 1.8, '#ef4444', false) + C(54, 34, 1.8, '#ef4444', false) +
+      F('M18 46 L46 46 L40 58 L24 58 Z'),
+  },
+  'monstro:avatar_ares': {
+    label: 'Ares',
+    svg: F('M14 34 C14 12 50 12 50 34 L50 54 L38 54 L38 40 L26 40 L26 54 L14 54 Z', '#991b1b') + `<path d="M18 14 Q32 -2 46 14 L40 18 Q32 8 24 18 Z" fill="#fbbf24" stroke="${INK}" stroke-width="2.5"/>` +
+      F('M24 30 L40 30 L40 35 L24 35 Z', INK) + C(28, 32.5, 1.6, '#f97316', false) + C(36, 32.5, 1.6, '#f97316', false),
+  },
+
   // ───────────── Genéricos ─────────────
   heroi: {
     label: 'Elmo grego',

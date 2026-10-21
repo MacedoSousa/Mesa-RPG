@@ -241,6 +241,17 @@ PV, CA, estamina, deslocamento, iniciativa e ataques são **calculados no servid
   - **Bronze celestial** causa dano extra contra monstros.
 - **Empurrar** um inimigo adjacente pode jogá-lo na água, na lava ou no abismo.
 - **Condições:** caído, esquivando, molhado, envenenado, atordoado, amedrontado, enfeitiçado, inconsciente, desengajado.
+- **Monstros agem:** no turno do monstro, o Mestre clica num ataque e no herói, ou usa **🤖 Agir sozinho**: o monstro anda até o alvo mais próximo e ataca com a melhor arma.
+- **Dano automático:** acerto tira PV na hora. O Mestre também aplica dano/cura em vários tokens (valor, fórmula ou "última rolagem"), com metade para quem passou no teste.
+- **Caído e morte:** herói a 0 PV fica inconsciente e faz testes contra a morte sozinho no início do turno (3 sucessos = estável, 3 falhas = morte, 20 natural = levanta com 1 PV).
+- **Descanso** curto e longo para o grupo, fora de combate.
+
+### Testes, recompensas e progressão
+
+- **Testes pedidos pelo Mestre:** perícia, atributo ou resistência com CD (pública ou secreta). O pedido aparece no celular do jogador, que rola com um toque; o bônus certo (atributo + proficiência) entra sozinho e o resultado ✅/❌ volta para o Mestre.
+- **XP:** monstro derrotado divide o XP entre o grupo; quests concluídas dão XP, dracmas e itens. Subida de nível automática (tabela do SRD 5e) com PV e estamina extras, salva no banco.
+- **Baús de tesouro:** o Mestre posiciona com loot manual ou sorteado (comum/incomum/raro) e tranca opcional. O conteúdo fica escondido dos jogadores até alguém abrir (ação, adjacente; tranca = teste de Prestidigitação ou Atletismo).
+- **Cobrar dracmas / tirar itens** e dar recompensas avulsas pelo painel **🎯 Testes & 🎁**.
 
 ### Superfícies e mapa destrutível
 
@@ -256,7 +267,9 @@ PV, CA, estamina, deslocamento, iniciativa e ataques são **calculados no servid
   - Paredes e colunas viram escombros, e árvores viram tocos.
   - Pontes desabam e derrubam quem está em cima na água.
   - Portões quebram, e árvores, pontes e portões queimam.
-- **Objetos:** barril de pólvora grega (explode em cadeia), barris de água e óleo, caixotes, estátuas e braseiros.
+- **Objetos:** barril de pólvora grega (explode em cadeia), barris de água e óleo, caixotes, estátuas, braseiros e baús.
+- **Gerador de mapas** (determinístico por semente): floresta, caverna, submundo, templo, rio, praia, interior e estrada. Usa ruído fBm, autômato celular para cavernas, BSP para interiores, rios e estradas escavados e espalhamento tipo Poisson.
+- **Visual "RPG 2D":** texturas procedurais com variação, bordas suaves entre terrenos, paredes em 3/4, copas de árvore por cima dos tokens, água animada, luzes de braseiro e lava, e ambiente (dia, noite, caverna, submundo, Olimpo).
 - Tudo é sincronizado instantaneamente para todos via WebSocket, com efeitos visuais (`fx`).
 
 ### Dados
@@ -268,9 +281,14 @@ Fórmulas `NdX±M` combináveis (`1d8+1d6+2`), `kh`/`kl` (vantagem `2d20kh1`), e
 - **Capítulos/fases:** criar, editar, ativar e excluir.
 - **Side quests temporárias:** progresso (ex.: 0/3) e expiração por rodada de combate ou contagem regressiva em segundos.
   - Ao expirar, um **gatilho** pode mostrar uma mensagem ou invocar um monstro.
-- **Mapa e monstros:** bestiário mitológico (12 monstros) injetável em tempo real, inclusive oculto. O editor de mapa pinta terreno, objetos e superfícies.
+- **Mapa e monstros:** bestiário mitológico (18 monstros) injetável em tempo real, inclusive oculto. O editor de mapa pinta terreno, objetos e superfícies.
 - **Controle da mesa:** pausar a mesa ou um jogador, banir, ajustar PV e condições, ajustar afinidade divina.
 - **Save/Load** e histórico.
+- **Aventura pronta:** *O Ladrão de Raios* (adaptação livre, 6 capítulos, quests principais e secundárias com XP), carregada com um clique em **📖 Fases → Aventuras prontas**. O roteiro do narrador está em [`docs/campanha/O_LADRAO_DE_RAIOS.md`](docs/campanha/O_LADRAO_DE_RAIOS.md) e o manual do HUD em [`docs/GUIA_MESTRE.md`](docs/GUIA_MESTRE.md).
+
+### Rostos dos heróis
+
+Cada herói ganha um retrato gerado (SVG em camadas, por semente): formato do rosto, cabelo, olhos, boca, barba, cicatriz, acessório, pele e traço de raça (chifres de sátiro, folhas de ninfa, olho de ciclope…). Dá para sortear e ajustar na criação ou depois, na ficha. O rosto aparece no token do mapa, com o emblema da classe.
 
 ---
 
@@ -312,6 +330,7 @@ Base: `/api`. Rotas autenticadas exigem `Authorization: Bearer <accessToken>`.
 | POST | `/characters/preview` | Valida a ficha sem salvar |
 | GET · PATCH · DELETE | `/characters/:id` | Detalhe / nome e ficha narrativa / soft delete |
 | POST | `/characters/:id/equip` | `{ slot, itemKey \| null }` com validação de restrições |
+| PUT | `/characters/:id/portrait` | Salvar o retrato do herói |
 | POST | `/characters/:id/restore` | Restaurar da lixeira |
 | GET · POST | `/campaigns` | Listar / criar (Mestre) |
 | POST | `/campaigns/join` | `{ code, characterId }` |
@@ -350,8 +369,8 @@ Conexão: `io(URL, { auth: { token: accessToken } })`. A sessão recupera evento
 
 Os comandos são validados com zod (`shared/src/engine/commands.ts`):
 
-- **Jogador:** `token.move`, `combat.attack`, `combat.attackTile`, `combat.action`, `combat.shove`, `combat.power`, `combat.endTurn`, `item.use`, `dice.roll`, `chat.say`.
-- **Mestre (além dos acima):** `table.setPaused`, `chapter.*`, `monster.spawn`, `token.update`, `token.remove`, `combat.start`, `combat.end`, `combat.next`, `map.set`, `map.paint`, `map.element`, `map.damage`, `quest.*`, `player.pause`, `player.ban`, `affinity.adjust`.
+- **Jogador:** `token.move`, `combat.attack`, `combat.attackTile`, `combat.action`, `combat.shove`, `combat.power`, `combat.endTurn`, `item.use`, `object.open`, `check.roll`, `dice.roll`, `chat.say`.
+- **Mestre (além dos acima):** `table.setPaused`, `chapter.*`, `monster.spawn`, `token.update`, `token.remove`, `combat.start`, `combat.end`, `combat.next`, `map.set`, `map.paint`, `map.element`, `map.damage`, `quest.*`, `player.pause`, `player.ban`, `affinity.adjust`, `combat.auto`, `token.damage`, `check.request`, `check.clear`, `party.rest`, `reward.grant`, `item.take`, `chest.place`, `adventure.load`, `map.generate`, `map.mood`.
 
 ---
 
@@ -362,9 +381,9 @@ npm run db:up        # o banco mesa_rpg_test é criado pelo docker compose
 npm test             # motor (shared) + integração (server)
 ```
 
-**102 testes:**
+**121 testes:**
 
-- **Motor e guardas do frontend (`shared/tests`, 65):**
+- **Motor e guardas do frontend (`shared/tests`, 82):**
   - Dados: parser, vantagem, críticos, limites.
   - Point-buy e atributos derivados.
   - Restrições de armas e armaduras por classe, atributo, divindade e raça.
@@ -375,8 +394,9 @@ npm test             # motor (shared) + integração (server)
   - Ataques, empurrar e poder divino.
   - RBAC e informação oculta.
   - Side quests com gatilho e migração de saves.
+  - Monstros agindo sozinhos, dano/cura, testes contra a morte, testes pedidos, XP e nível, recompensas de quest, baús e carga de aventura.
   - Guarda de regressão: nenhum `useEffect` dos clientes devolve valor por engano (causa da tela quebrando).
-- **Integração (`server/tests`, 37, com PostgreSQL real):**
+- **Integração (`server/tests`, 39, com PostgreSQL real):**
   - Autenticação: Argon2id, primeiro usuário Mestre, convite, login, refresh por cookie e revogação.
   - Papéis: código de Mestre tolerante a espaços e maiúsculas, conta existente virando Mestre, Mestre jogando na campanha de outro.
   - Criação e edição de fichas via API.
@@ -386,6 +406,7 @@ npm test             # motor (shared) + integração (server)
   - Comandos duplicados descartados.
   - Pausar e banir.
   - Save/load idêntico e histórico filtrado.
+  - Recompensa com subida de nível persistida, baú aberto e teste pedido pelo Mestre resolvido pelo jogador.
 
 Por segurança, a bateria se recusa a rodar se `TEST_DATABASE_URL` não tiver "test" no nome, porque ela recria o schema do zero.
 

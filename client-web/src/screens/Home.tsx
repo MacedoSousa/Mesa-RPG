@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  Auth, Badge, Button, Card, EmptyState, Field, PromoteMaster, Select, Spinner, api, errorMessage, navigate, toast, useSession,
+  Auth, Badge, Button, Card, EmptyState, Field, PromoteMaster, Select, Spinner, api, errorMessage, isPortraitSpec, navigate, portraitUrl, randomPortrait, toast, useSession,
 } from '@mesa/common';
 import type { CampaignDTO, CharacterDTO } from '../types';
 
@@ -121,7 +121,8 @@ export function Home({ joinCode }: { joinCode?: string }) {
             {chars.map((c) => (
               <div key={c.id} className={`rounded-xl border p-3 ${c.deletedAt ? 'border-rose-500/30 opacity-60' : 'border-white/10 bg-white/5'}`}>
                 <div className="flex items-start justify-between gap-2">
-                  <div>
+                  <img src={portraitUrl(isPortraitSpec(c.portrait) ? c.portrait : randomPortrait(c.name, c.race), 72)} width={52} height={52} className="rounded-full" alt="" />
+                  <div className="flex-1">
                     <p className="font-display text-lg text-slate-50">{c.name}</p>
                     <p className="text-sm text-slate-300">{c.raceLabel} · {c.classLabel} · nível {c.level}</p>
                   </div>

@@ -1,5 +1,5 @@
 import type { AttackDef } from '../content/monsters';
-import { criticalFormula, d20Formula, resolveAdvantage, roll } from '../dice';
+import { averageOf, criticalFormula, d20Formula, resolveAdvantage, roll } from '../dice';
 import { CommandError, EngineContext } from './context';
 import {
   OBJECTS, TERRAIN, applyElementArea, damageObject, damageTile, decaySurfaces, elementDamageType, elevationAt,
@@ -7,7 +7,7 @@ import {
 } from './map';
 import { Point, findPath, gridDistance, hasLineOfSight } from './pathfinding';
 import { tickQuestsByRound } from './quests';
-import { addCondition, damageToken, findToken, hasCondition, isHostile, removeCondition, tokenAt } from './tokens';
+import { addCondition, damageToken, deathSave, findToken, hasCondition, isHostile, removeCondition, tokenAt } from './tokens';
 import type { CombatState, Economy, Token } from './types';
 
 /** Movimento máximo fora de combate por comando (quadrados). */
@@ -109,6 +109,11 @@ export function nextTurn(ctx: EngineContext) {
     if (t && hasCondition(t, 'atordoado')) {
       removeCondition(t, 'atordoado');
       ctx.log(`${t.name} está atordoado e perde o turno.`, { type: 'turno' });
+      continue;
+    }
+    // Herói caído: o turno dele é a salvaguarda contra a morte (automática)
+    if (t && t.kind === 'personagem' && !t.dead && hasCondition(t, 'inconsciente')) {
+      deathSave(ctx, t);
       continue;
     }
     if (!shouldSkip(t)) break;
@@ -343,5 +348,96 @@ export function castDivinePower(ctx: EngineContext, t: Token, at: Point) {
   if (p.damage && (p.element === 'fogo' || p.element === 'raio')) {
     const tile = tileAt(ctx.state.map, at.x, at.y);
     if (tile?.o) damageObject(ctx, at.x, at.y, roll(p.damage, ctx.rng).total, elementDamageType(p.element));
+  }
+}
+
+// ───────────────────────────── Turno automático (IA simples para o Mestre) ─────────────────────────────
+
+function attackReach(a: AttackDef) {
+  return a.longRange ?? a.range;
+}
+
+/**
+ * O monstro (ou NPC) age sozinho: escolhe o inimigo visível mais próximo, ataca se alcançar,
+ * senão anda até ficar ao alcance e então ataca. Ótimo para o Mestre iniciante.
+ */
+export function autoAct(ctx: EngineContext, t: Token) {
+  if (t.kind === 'personagem') throw new CommandError('Heróis são controlados pelos jogadores');
+  if (t.dead || hasCondition(t, 'inconsciente')) throw new CommandError(`${t.name} não pode agir`);
+  if (!t.attacks.length) throw new CommandError(`${t.name} não tem ataques`);
+  const targets = ctx.state.tokens.filter((o) => !o.dead && !o.hidden && isHostile(t, o) && o.id !== t.id);
+  if (!targets.length) {
+    ctx.log(`${t.name} não encontra ninguém para atacar.`, { type: 'combate' });
+    return;
+  }
+  // Prioriza quem está de pé; heróis caídos só se não houver outro alvo
+  const standing = targets.filter((o) => !hasCondition(o, 'inconsciente'));
+  const pool = standing.length ? standing : targets;
+  pool.sort((a, b) => gridDistance(t, a) - gridDistance(t, b) || a.hp - b.hp);
+  const target = pool[0];
+
+  const best = (dist: number) => {
+    const usable = t.attacks
+      .map((a, i) => ({ a, i }))
+      .filter(({ a }) => dist <= attackReach(a) && (dist <= 1 || hasLineOfSight(ctx.state, t, target)));
+    // Corpo a corpo quando colado; senão a de maior dano médio
+    usable.sort((x, y) => Number(dist <= 1 ? y.a.range <= 2 : 0) - Number(dist <= 1 ? x.a.range <= 2 : 0) || avg(y.a.damage) - avg(x.a.damage));
+    return usable[0];
+  };
+
+  let choice = best(gridDistance(t, target));
+  if (!choice) {
+    const melee = Math.max(1, ...t.attacks.filter((a) => !a.ranged).map((a) => a.range));
+    const eco = economyOf(ctx, t);
+    const budget = eco ? eco.movement : EXPLORATION_MOVE_LIMIT;
+    // Casa livre mais perto do alvo, dentro do movimento
+    let bestCell: Point | null = null;
+    let bestScore = Infinity;
+    for (let dy = -melee; dy <= melee; dy++) {
+      for (let dx = -melee; dx <= melee; dx++) {
+        const c = { x: target.x + dx, y: target.y + dy };
+        if (c.x === target.x && c.y === target.y) continue;
+        const path = findPath(ctx.state, t.id, t, c, Infinity);
+        if (!path) continue;
+        const score = path.cost;
+        if (score < bestScore) {
+          bestScore = score;
+          bestCell = c;
+        }
+      }
+    }
+    if (!bestCell) {
+      ctx.log(`${t.name} não encontra caminho até ${target.name}.`, { type: 'combate' });
+      return;
+    }
+    // Anda o máximo possível ao longo do caminho
+    const full = findPath(ctx.state, t.id, t, bestCell, Infinity)!;
+    let spent = 0;
+    let stop: Point = { x: t.x, y: t.y };
+    for (const step of full.path) {
+      const c = moveCost(tileAt(ctx.state.map, step.x, step.y)!);
+      if (spent + c > budget) break;
+      spent += c;
+      stop = step;
+    }
+    if (stop.x !== t.x || stop.y !== t.y) moveToken(ctx, t, stop);
+    if (t.dead || hasCondition(t, 'inconsciente') || hasCondition(t, 'caido')) return;
+    choice = best(gridDistance(t, target));
+    if (!choice) {
+      ctx.log(`${t.name} avança em direção a ${target.name}.`, { type: 'combate' });
+      return;
+    }
+  }
+  const eco = economyOf(ctx, t);
+  if (eco && eco.action < 1) return;
+  if (eco) eco.action -= 1;
+  resolveAttackRoll(ctx, t, target, choice.a, choice.i);
+}
+
+function avg(formula: string) {
+  try {
+    return averageOf(formula);
+  } catch {
+    return 0;
   }
 }

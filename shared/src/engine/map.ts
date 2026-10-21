@@ -89,7 +89,14 @@ export const OBJECTS: Record<ObjectType, ObjectDef> = {
   caixote: { label: 'Caixote', color: 0xa0743c, maxHp: 8, blocksMovement: true, blocksSight: false, flammable: true },
   estatua: { label: 'Estátua', color: 0xd9d4c7, maxHp: 30, blocksMovement: true, blocksSight: true, onDestroy: { terrain: 'escombros' } },
   braseiro: { label: 'Braseiro', color: 0xffa040, maxHp: 10, blocksMovement: true, blocksSight: false, onDestroy: { surface: { type: 'fogo', radius: 0 } } },
+  // Baús não quebram: o tesouro só sai abrindo (ação "Abrir baú" ao lado dele)
+  bau: { label: 'Baú de Tesouro', color: 0x9a6b2f, maxHp: 999, blocksMovement: true, blocksSight: false },
+  bau_aberto: { label: 'Baú Aberto', color: 0x5b4220, maxHp: 999, blocksMovement: true, blocksSight: false },
 };
+
+export function isChest(type: ObjectType | undefined): boolean {
+  return type === 'bau' || type === 'bau_aberto';
+}
 
 // ───────────────────────────── Acesso ao grid ─────────────────────────────
 
@@ -360,6 +367,7 @@ export function damageObject(ctx: EngineContext, x: number, y: number, amount: n
   const tile = tileAt(ctx.state.map, x, y);
   if (!tile?.o) return false;
   const def = OBJECTS[tile.o.type];
+  if (isChest(tile.o.type)) return false;
   if (type === 'fogo' && !def.flammable && tile.o.type !== 'braseiro') return false;
   tile.o.hp -= amount;
   if (tile.o.hp > 0) return false;

@@ -1,5 +1,5 @@
 import { Rng, defaultRng } from '../dice';
-import type { Actor, Fx, LogEntry, TableState, Visibility } from './types';
+import type { Actor, Fx, LogEntry, LootEntry, TableState, Visibility } from './types';
 
 export const LOG_LIMIT = 300;
 
@@ -27,7 +27,9 @@ export type SideEffect =
   | { type: 'consumable_used'; characterId: string; itemKey: string; quantity: number }
   | { type: 'character_hp'; characterId: string; hp: number; stamina: number }
   | { type: 'player_banned'; userId: string }
-  | { type: 'affinity_changed'; characterId: string; delta: number };
+  | { type: 'affinity_changed'; characterId: string; delta: number }
+  /** XP, dracmas e itens para um personagem (monstro derrotado, quest, baú, Mestre). */
+  | { type: 'reward'; characterId: string; xp: number; dracmas: number; items: LootEntry[]; reason: string };
 
 export function createContext(state: TableState, actor: Actor, rng: Rng = defaultRng, now = Date.now()): EngineContext {
   const ctx: EngineContext = {
@@ -63,4 +65,22 @@ export function createContext(state: TableState, actor: Actor, rng: Rng = defaul
     },
   };
   return ctx;
+}
+
+/** Soma recompensas no mesmo personagem dentro de um comando (ex.: explosão que mata 3 monstros). */
+export function grantReward(ctx: EngineContext, characterId: string, r: { xp?: number; dracmas?: number; items?: LootEntry[]; reason: string }) {
+  const existing = ctx.sideEffects.find((e) => e.type === 'reward' && e.characterId === characterId);
+  if (existing && existing.type === 'reward') {
+    existing.xp += r.xp ?? 0;
+    existing.dracmas += r.dracmas ?? 0;
+    existing.items.push(...(r.items ?? []));
+    if (!existing.reason.includes(r.reason)) existing.reason += `, ${r.reason}`;
+    return;
+  }
+  ctx.sideEffects.push({ type: 'reward', characterId, xp: r.xp ?? 0, dracmas: r.dracmas ?? 0, items: [...(r.items ?? [])], reason: r.reason });
+}
+
+/** Heróis que recebem recompensa de grupo: personagens na mesa, não ocultos (banidos ficam ocultos). */
+export function partyTokens(state: TableState) {
+  return state.tokens.filter((t) => t.kind === 'personagem' && t.characterId && !t.hidden && !t.dead);
 }

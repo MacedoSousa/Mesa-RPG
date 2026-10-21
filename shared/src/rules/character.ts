@@ -42,6 +42,7 @@ export const characterCreationSchema = z.object({
     .default({}),
   inventory: z.array(z.object({ itemKey: z.string(), quantity: z.number().int().min(1).max(999) })).default([]),
   backstory: z.string().max(10_000).optional(),
+  portrait: z.record(z.unknown()).optional(),
 });
 export type CharacterCreationInput = z.infer<typeof characterCreationSchema>;
 

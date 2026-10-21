@@ -131,13 +131,20 @@ export class TableManager {
     const index = state.tokens.filter((t) => t.kind === 'personagem').length;
     if (existing) {
       const fresh = tokenFromCharacter(data.snapshot, existing.x, existing.y, index, data.custom);
+      const previousMax = existing.maxHp;
+      const previousStamina = existing.maxStamina;
       Object.assign(existing, {
         name: fresh.name, maxHp: fresh.maxHp, ac: fresh.ac, speed: fresh.speed, maxStamina: fresh.maxStamina,
         initiativeBonus: fresh.initiativeBonus, abilityMods: fresh.abilityMods, proficiency: fresh.proficiency,
         attacks: fresh.attacks, resistances: fresh.resistances, conditionAdvantage: fresh.conditionAdvantage, power: fresh.power,
         consumables: fresh.consumables, hidden: false, portrait: fresh.portrait, emblem: fresh.emblem,
+        skills: fresh.skills, saves: fresh.saves, level: fresh.level, face: fresh.face,
       });
+      // Subiu de nível: ganha a diferença de PV/Estamina
+      if (fresh.maxHp > previousMax) existing.hp += fresh.maxHp - previousMax;
+      if (fresh.maxStamina > previousStamina) existing.stamina += fresh.maxStamina - previousStamina;
       existing.hp = Math.min(existing.hp, existing.maxHp);
+      existing.stamina = Math.min(existing.stamina, existing.maxStamina);
       return;
     }
     const preset = PRESET_MAPS.find((p) => p.key === state.map.preset);
@@ -152,6 +159,18 @@ export class TableManager {
       state.combat.economy[token.id] = { action: 1, bonusAction: 1, reaction: 1, movement: token.speed };
       createContext(state, SYSTEM_ACTOR).log(`⚔️ ${token.name} entra no combate (iniciativa ${initiative}).`, { type: 'combate' });
     }
+  }
+
+  /** Atualiza o token de um personagem na mesa ao vivo (ex.: mudou o rosto ou equipamento). */
+  async refreshCharacter(campaignId: string, characterId: string) {
+    const table = this.tables.get(campaignId);
+    if (!table || !table.state.tokens.some((t) => t.characterId === characterId)) return;
+    await this.enqueue(table, async () => {
+      await this.syncCharacterToken(table.state, characterId);
+      table.state.seq += 1;
+      table.dirty = true;
+      this.broadcast(campaignId);
+    });
   }
 
   actorOf(user: SocketUser, masterId: string): Actor {
@@ -180,17 +199,32 @@ export class TableManager {
         table.recentCommands.set(commandId, state.seq);
         if (table.recentCommands.size > 200) table.recentCommands.delete(table.recentCommands.keys().next().value!);
       }
-      await this.applySideEffects(campaignId, ctx.sideEffects);
-      await this.persistLog(campaignId, ctx.newLog);
-      this.broadcast(campaignId, ctx.fx, ctx.newLog);
+      const extra = await this.applySideEffects(campaignId, ctx.sideEffects);
+      const log = [...ctx.newLog, ...extra];
+      await this.persistLog(campaignId, log);
+      this.broadcast(campaignId, ctx.fx, log);
       return state.seq;
     });
   }
 
   /** Efeitos que saem do motor para o banco (PV, consumíveis, afinidade, banimento). */
-  private async applySideEffects(campaignId: string, effects: SideEffect[]) {
+  private async applySideEffects(campaignId: string, effects: SideEffect[]): Promise<LogEntry[]> {
+    const extra: LogEntry[] = [];
     for (const e of effects) {
       switch (e.type) {
+        case 'reward': {
+          const r = await CharacterService.grantReward(e.characterId, e);
+          const state = this.tables.get(campaignId)?.state;
+          if (!r || !state) break;
+          await this.syncCharacterToken(state, e.characterId);
+          if (r.level > r.oldLevel) {
+            const ctx = createContext(state, SYSTEM_ACTOR);
+            ctx.log(`🆙 ${r.name} sobe para o NÍVEL ${r.level}! PV máximo agora é ${r.maxHp}. Abra a ficha para ver as novidades.`, { type: 'recompensa' });
+            ctx.emit({ type: 'cura', tokenId: `tok_${e.characterId}`, amount: 0 });
+            extra.push(...ctx.newLog);
+          }
+          break;
+        }
         case 'character_hp':
           await CharacterService.setVitals(e.characterId, e.hp, e.stamina);
           break;
@@ -209,6 +243,7 @@ export class TableManager {
           break;
       }
     }
+    return extra;
   }
 
   private async persistLog(campaignId: string, entries: LogEntry[]) {

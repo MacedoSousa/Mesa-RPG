@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  DAMAGE_TYPES, MONSTERS, OBJECTS, SURFACES, TERRAIN, type DamageType, type Element, type MapState, type ObjectType, type ProjectedState,
+  DAMAGE_TYPES, MAP_KINDS, MAP_KIND_KEYS, MONSTERS, OBJECTS, SURFACES, TERRAIN, type DamageType, type Element, type MapKind, type MapState, type ObjectType, type ProjectedState,
   type SurfaceType, type TerrainType,
 } from '@mesa/shared';
 import { Badge, Button, Field, Select, api, cx, errorMessage, toast, useTable, TokenAvatar } from '@mesa/common';
@@ -45,6 +45,7 @@ export function MapPanel({ campaignId, state, tool, setTool }: { campaignId: str
   const [dmgAmount, setDmgAmount] = useState('10');
   const [dmgType, setDmgType] = useState<DamageType>('concussao');
   const [blank, setBlank] = useState({ name: 'Mapa novo', width: '24', height: '16', terrain: 'grama' as TerrainType });
+  const [gen, setGen] = useState({ kind: 'floresta' as MapKind, width: '28', height: '20', seed: '' });
 
   async function load() {
     try {
@@ -102,6 +103,34 @@ export function MapPanel({ campaignId, state, tool, setTool }: { campaignId: str
 
   return (
     <div className="space-y-4">
+      <section className="rounded-xl border border-emerald-400/30 bg-emerald-950/20 p-2">
+        <p className="mb-1 text-sm font-semibold text-emerald-200">✨ Gerar mapa</p>
+        <p className="mb-2 text-[11px] text-slate-400">Cria um mapa novo por semente: mesma semente = mesmo mapa. Depois dá para editar, salvar e destruir à vontade.</p>
+        <Select label="Tipo" value={gen.kind} onChange={(v) => setGen({ ...gen, kind: v as MapKind })} options={MAP_KIND_KEYS.map((k) => ({ value: k, label: MAP_KINDS[k].label }))} />
+        <div className="mt-2 grid grid-cols-3 gap-2">
+          <Field label="Largura" type="number" value={gen.width} onChange={(e) => setGen({ ...gen, width: e.target.value })} />
+          <Field label="Altura" type="number" value={gen.height} onChange={(e) => setGen({ ...gen, height: e.target.value })} />
+          <Field label="Semente" value={gen.seed} onChange={(e) => setGen({ ...gen, seed: e.target.value })} placeholder="aleatória" />
+        </div>
+        <Button
+          className="mt-2 w-full"
+          variant="gold"
+          onClick={() => void send({ type: 'map.generate', kind: gen.kind, width: Math.max(12, Math.min(48, Number(gen.width) || 28)), height: Math.max(10, Math.min(40, Number(gen.height) || 20)), seed: gen.seed.trim() || undefined })}
+        >
+          Gerar {MAP_KINDS[gen.kind].label}
+        </Button>
+        {state.map.seed && <p className="mt-1 text-[11px] text-slate-400">Mapa atual: semente <code>{state.map.seed}</code></p>}
+        <div className="mt-2">
+          <p className="mb-1 text-xs text-slate-300">Ambiente (luz)</p>
+          <div className="flex flex-wrap gap-1">
+            {(['dia', 'noite', 'caverna', 'submundo', 'olimpo'] as const).map((m) => (
+              <button key={m} onClick={() => void send({ type: 'map.mood', mood: m })} className={cx('rounded-full border px-2 py-0.5 text-[11px]', (state.map.mood ?? 'dia') === m ? 'border-amber-400 bg-amber-500/20' : 'border-white/10')}>
+                {{ dia: '☀️ Dia', noite: '🌙 Noite', caverna: '🕯️ Caverna', submundo: '💀 Submundo', olimpo: '🏛️ Olimpo' }[m]}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
       <section>
         <p className="mb-1 text-sm font-semibold text-amber-200">Mapas do livro</p>
         <div className="grid gap-1">
