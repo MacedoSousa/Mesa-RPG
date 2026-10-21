@@ -158,6 +158,15 @@ Os jogadores **veem o baú, mas não o conteúdo**, nem a CD.
 - **Elementos e dano ao cenário:** jogue fogo ou raio numa área e destrua paredes e pontes ao vivo.
 - **Salvar mapa:** guarda na campanha para reutilizar.
 
+### Arte dos monstros (🎨 Arte)
+
+Com o **ComfyUI** aberto no seu PC, a aba **🎨 Arte** pinta cada monstro com IA local.
+
+- **🎨 Pintar os que faltam** pinta todos de uma vez. Na RTX 2060 Super são uns 20 a 60 s por monstro; faça antes da sessão.
+- A pintura vira o token no mapa de todos na hora.
+- Não gostou? **🎲 Outra versão**, **✏️ Descrição** (o que pintar), **📤 Enviar imagem** (uma imagem sua) ou **↩️ Voltar ao ícone**.
+- Instalação e dicas: [ARTE_COM_IA.md](ARTE_COM_IA.md).
+
 ---
 
 ## 10. Jogadores, pausa e segurança

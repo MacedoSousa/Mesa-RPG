@@ -23,7 +23,8 @@
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "test": "npm run build:shared && npm test -w shared && npm test -w server",
-    "typecheck": "npm run build:shared && npm run typecheck -w server && npm run typecheck -w client-common && npm run typecheck -w client-host && npm run typecheck -w client-web"
+    "typecheck": "npm run build:shared && npm run typecheck -w server && npm run typecheck -w client-common && npm run typecheck -w client-host && npm run typecheck -w client-web",
+    "art": "npm run art -w server --"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

@@ -29,7 +29,7 @@ function Swatches({ value, colors, onChange }: { value: string; colors: readonly
 export function PortraitEditor({ value, onChange, race, name }: { value: PortraitSpec | null; onChange: (s: PortraitSpec) => void; race: string; name?: string }) {
   const spec = useMemo(() => value ?? randomPortrait(`${name || 'heroi'}-${race}`, race), [value, race, name]);
   const set = <K extends keyof PortraitSpec>(k: K, v: PortraitSpec[K]) => onChange({ ...spec, [k]: v });
-  const reroll = () => onChange(randomPortrait(`${Date.now()}-${Math.random()}`, race));
+  const reroll = () => onChange({ ...randomPortrait(`${Date.now()}-${Math.random()}`, race), look: spec.look });
   const cycle = (field: keyof typeof PORTRAIT_FIELDS, dir: 1 | -1) => {
     const opts = PORTRAIT_FIELDS[field].options as readonly string[];
     const i = opts.indexOf(spec[field] as string);

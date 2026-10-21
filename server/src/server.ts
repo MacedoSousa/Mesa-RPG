@@ -7,6 +7,8 @@ import { seedItems } from './database/seed';
 import { tableManager } from './game/TableManager';
 import { createApp } from './app';
 import { createSocketServer } from './sockets';
+import { artService } from './services/artService';
+import { EVENTS } from '@mesa/shared';
 
 async function bootstrap() {
   await connectDatabase();
@@ -21,6 +23,7 @@ async function bootstrap() {
   const httpServer = createServer(app);
   const io = createSocketServer(httpServer, tableManager);
   tableManager.start();
+  artService.setNotifier(() => io.emit(EVENTS.ART));
 
   httpServer.listen(env.PORT, '0.0.0.0', () => {
     console.log(`\n⚡ Mesa RPG rodando na porta ${env.PORT}`);

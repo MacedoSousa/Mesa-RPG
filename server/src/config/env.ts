@@ -21,6 +21,12 @@ const envSchema = z.object({
   MASTER_INVITE_CODE: z.string().optional(),
   AUTOSAVE_SECONDS: z.coerce.number().int().min(5).default(60),
   AUTOSAVE_KEEP: z.coerce.number().int().min(1).max(50).default(5),
+  // Arte dos monstros com IA local (ComfyUI no PC do Mestre)
+  COMFYUI_URL: z.string().url().default('http://127.0.0.1:8188'),
+  COMFYUI_CHECKPOINT: z.string().optional(),
+  COMFYUI_WORKFLOW: z.string().optional(),
+  COMFYUI_TIMEOUT_SECONDS: z.coerce.number().int().min(10).default(300),
+  ART_DIR: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

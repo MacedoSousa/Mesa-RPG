@@ -7,6 +7,7 @@ import path from 'path';
 import { corsOrigins } from './config/env';
 import { errorHandler, notFound } from './middlewares/errorHandler';
 import { buildRoutes } from './routes';
+import { ART_DIR } from './services/artService';
 
 const CLIENT_WEB = path.resolve(__dirname, '../../client-web/dist');
 const CLIENT_HOST = path.resolve(__dirname, '../../client-host/dist');
@@ -29,6 +30,8 @@ export function createApp(opts: { authRateLimit?: boolean; serveClients?: boolea
 
   app.use('/api', buildRoutes({ authRateLimit: opts.authRateLimit }));
   app.use('/api', notFound);
+  // Arte pintada dos monstros (pública na rede local: aparece nos tokens de todos)
+  app.use('/art', express.static(ART_DIR, { maxAge: '7d', fallthrough: false }));
 
   // O próprio Host entrega os clientes (mesma origem: sem CORS e cookies simples)
   if (opts.serveClients !== false) {

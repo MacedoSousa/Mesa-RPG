@@ -15,6 +15,8 @@ export const EVENTS = {
   ERROR: 'table:error',
   KICKED: 'table:kicked',
   PRESENCE: 'table:presence',
+  /** A arte de algum monstro mudou (recarregar a lista em /api/art). */
+  ART: 'art:updated',
 } as const;
 
 export type Ack<T = unknown> = (res: { ok: true; data?: T } | { ok: false; error: string; code?: string }) => void;

@@ -34,6 +34,14 @@ Você decide **o que** tentar; os **dados** decidem se deu certo. Não existe je
 
 ## 3. Criando seu herói (4 passos)
 
+Enquanto você escolhe, o seu herói aparece **em 3D** no topo da tela, como num criador de personagem de videogame:
+
+- **Arraste** para girar e use a **pinça** (ou a roda do mouse) para ver o rosto de perto.
+- Cada escolha reage: trocar a classe troca o corpo e a roupa, o deus faz você ser **reclamado** (o símbolo dele brilha sobre a sua cabeça) e investir em Força faz o herói golpear.
+- No último passo (**Aparência**) você ajusta pele, cabelo, olhos, cor da roupa (tem o laranja do Acampamento!), altura e porte.
+- Em **▴ Poses e animações** o herói ataca, defende, conjura, comemora, senta na fogueira…
+- No celular, toque em **▴ ocultar 3D** para ganhar espaço na tela.
+
 ### Passo 1: Raça
 Quem é você?
 

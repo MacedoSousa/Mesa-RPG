@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { AuthController } from '../controllers/authController';
 import { CampaignController, HostController } from '../controllers/campaignController';
 import { CharacterController, RulesController } from '../controllers/characterController';
+import { ArtController } from '../controllers/artController';
 import { sequelize } from '../config/database';
 import { rateLimit, requireAuth, requireRole } from '../middlewares/auth';
 
@@ -71,6 +72,16 @@ export function buildRoutes(opts: { authRateLimit?: boolean } = {}) {
 
   // Host
   r.get('/host/info', requireAuth, requireRole('MASTER'), HostController.info);
+
+  // Arte dos monstros (IA local no ComfyUI ou upload)
+  const master = [requireAuth, requireRole('MASTER')];
+  r.get('/art', requireAuth, ArtController.list);
+  r.get('/art/comfy', ...master, ArtController.status);
+  r.get('/art/prompts', ...master, ArtController.prompts);
+  r.get('/art/jobs', ...master, ArtController.jobs);
+  r.post('/art/monsters/:key/generate', ...master, ArtController.generate);
+  r.put('/art/monsters/:key', ...master, ArtController.upload);
+  r.delete('/art/monsters/:key', ...master, ArtController.remove);
 
   return r;
 }

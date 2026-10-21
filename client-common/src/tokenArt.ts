@@ -4,6 +4,7 @@
  * Cada ícone é um SVG 64x64 branco com contorno escuro — legível sobre qualquer cor e no celular.
  */
 import { Texture } from 'pixi.js';
+import { api } from './api';
 
 const INK = '#1c1917';
 
@@ -199,8 +200,49 @@ export function artKeyFor(t: { portrait?: string; kind: string; monsterKey?: str
   return t.kind === 'monstro' ? 'monstro' : 'heroi';
 }
 
-/** Data URL do SVG, para usar em <img> na interface. */
+// ───────────── Arte pintada (ComfyUI ou upload do Mestre) ─────────────
+
+let painted: Record<string, string> = {};
+let paintedLoaded: Promise<void> | null = null;
+
+/** Chave do monstro quando a arte pintada substitui o ícone (ex.: "monstro:harpia" → "harpia"). */
+function paintedKey(artKey: string): string | null {
+  return artKey.startsWith('monstro:') ? artKey.slice(8) : null;
+}
+
+/** URL da arte pintada, se o Mestre já gerou/enviou uma para este monstro. */
+export function paintedUrl(artKey: string): string | null {
+  const k = paintedKey(artKey);
+  return k ? painted[k] ?? null : null;
+}
+
+/** Busca a lista de artes pintadas no servidor (uma vez, ou de novo com force). */
+export function loadPaintedArt(force = false): Promise<void> {
+  if (paintedLoaded && !force) return paintedLoaded;
+  paintedLoaded = api<{ monsters: Record<string, string> }>('/art')
+    .then((r) => {
+      const next = r.monsters ?? {};
+      const changed = new Set([...Object.keys(painted), ...Object.keys(next)].filter((k) => painted[k] !== next[k]));
+      painted = next;
+      for (const k of changed) {
+        textures.delete(`monstro:${k}`);
+        loading.delete(`monstro:${k}`);
+      }
+      if (changed.size) for (const l of listeners) l();
+    })
+    .catch(() => {
+      paintedLoaded = null; // tenta de novo na próxima vez (ex.: ainda não logado)
+    });
+  return paintedLoaded;
+}
+
+/** Imagem para usar em <img>: arte pintada quando houver, senão o ícone SVG. */
 export function artUrl(key: string): string {
+  return paintedUrl(key) ?? svgUrl(key);
+}
+
+/** Data URL do SVG, para usar em <img> na interface. */
+export function svgUrl(key: string): string {
   const art = ART[key] ?? ART.heroi;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="128" height="128">${art.svg}</svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
@@ -218,17 +260,33 @@ export function onArtLoaded(fn: () => void) {
   return () => listeners.delete(fn);
 }
 
+/** A textura deste token é uma pintura (preenche o círculo) em vez de um ícone? */
+export function isPainted(key: string): boolean {
+  return !!paintedUrl(key) && textures.get(key)?.label === 'painted';
+}
+
 export function getArtTexture(key: string): Texture | null {
   const ready = textures.get(key);
   if (ready) return ready;
   if (!loading.has(key) && typeof Image !== 'undefined') {
     loading.add(key);
+    const url = paintedUrl(key);
     const img = new Image();
     img.onload = () => {
-      textures.set(key, Texture.from(img));
+      const tex = Texture.from(img);
+      tex.label = url ? 'painted' : 'icon';
+      textures.set(key, tex);
       for (const l of listeners) l();
     };
-    img.src = artUrl(key);
+    img.onerror = () => {
+      // Arte pintada indisponível: volta para o ícone
+      if (url) {
+        delete painted[paintedKey(key)!];
+        loading.delete(key);
+        for (const l of listeners) l();
+      }
+    };
+    img.src = url ?? svgUrl(key);
   }
   return null;
 }

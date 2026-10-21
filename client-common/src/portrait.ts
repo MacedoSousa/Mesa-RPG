@@ -21,6 +21,26 @@ export const SCARS = ['nenhuma', 'bochecha', 'olho', 'queixo'] as const;
 export const ACCESSORIES = ['nenhum', 'louros', 'elmo', 'diadema', 'capuz', 'faixa', 'brinco', 'oculos'] as const;
 export const RACE_FEATURES = ['nenhum', 'satiro', 'ninfa', 'ciclope', 'cacadora', 'divino'] as const;
 
+export const BODY_KEYS = ['auto', 'knight', 'barbarian', 'mage', 'rogue', 'rogue_hooded'] as const;
+export type BodyKey = Exclude<(typeof BODY_KEYS)[number], 'auto'>;
+export const BODY_LABELS: Record<(typeof BODY_KEYS)[number], string> = {
+  auto: 'Da classe', knight: 'Hoplita', barbarian: 'Bárbaro', mage: 'Sábio', rogue: 'Aventureiro', rogue_hooded: 'Encapuzado',
+};
+export const OUTFIT_COLORS = ['#f97316', '#c0392b', '#2f6fb7', '#2e8b57', '#6b3fa0', '#d4a020', '#e8e4dc', '#3a3a3a', '#8b5a2b', '#1fa5a5'] as const;
+
+/** Corpo 3D do herói: modelo, cor da roupa, proporções e adornos. */
+export interface HeroLook {
+  body?: (typeof BODY_KEYS)[number];
+  /** Cor principal da roupa (null = original do modelo). */
+  outfit?: string | null;
+  /** 0.9–1.1 */
+  height?: number;
+  /** 0.9–1.15 */
+  build?: number;
+  /** Mostra elmo/chapéu do modelo. */
+  headgear?: boolean;
+}
+
 export interface PortraitSpec {
   v: 1;
   seed: string;
@@ -37,6 +57,8 @@ export interface PortraitSpec {
   race: (typeof RACE_FEATURES)[number];
   bg: string;
   freckles: boolean;
+  /** Aparência do corpo 3D (opcional; ausente = padrão da classe). */
+  look?: HeroLook;
 }
 
 export const PORTRAIT_FIELDS = {

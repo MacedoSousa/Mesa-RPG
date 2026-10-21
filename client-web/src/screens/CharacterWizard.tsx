@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Suspense, lazy, useMemo, useRef, useState } from 'react';
 import {
   ABILITIES, ABILITY_LABELS, CLASSES, CLASS_KEYS, DIVINITIES, DIVINITY_KEYS, ITEMS, POINT_BUY_BUDGET, POINT_BUY_COST,
   POINT_BUY_MAX, POINT_BUY_MIN, RACES, RACE_KEYS, SKILLS, STANDARD_ARRAY, abilityModifier, canUseItem, formatModifier,
@@ -6,10 +6,18 @@ import {
   type AbilityScores, type CharacterBuild, type CharacterCreationInput, type ClassKey, type DivinityKey, type Equipment,
   type ItemDef, type RaceKey, type Skill,
 } from '@mesa/shared';
-import { Badge, Button, Card, Field, PortraitEditor, Term, TextArea, api, cx, errorMessage, navigate, randomPortrait, toast, TokenAvatar, type PortraitSpec } from '@mesa/common';
+import { Badge, Button, Card, Field, PortraitEditor, Term, TextArea, api, cx, errorMessage, navigate, raceFeatureFor, randomPortrait, toast, TokenAvatar, type PortraitSpec } from '@mesa/common';
+import type { HeroViewerHandle } from '../hero3d/HeroViewer';
+import type { HeroAction } from '../hero3d/heroKit';
+import { LookEditor } from '../hero3d/LookEditor';
 import type { CharacterDTO } from '../types';
 
-const STEPS = ['Raça', 'Pai Olímpico', 'Atributos', 'Inventário', 'Revisão'];
+const HeroViewer = lazy(() => import('../hero3d/HeroViewer'));
+const STEPS = ['Raça', 'Pai Olímpico', 'Atributos', 'Inventário', 'Aparência'];
+/** Cada atributo ganha uma animação quando você investe nele. */
+const ABILITY_ACTION: Record<string, HeroAction> = {
+  forca: 'atacar', destreza: 'esquivar', constituicao: 'defender', inteligencia: 'magia', sabedoria: 'interagir', carisma: 'comemorar',
+};
 const EXTRA_ITEMS = 3;
 
 const baseScores = (): AbilityScores => ({ forca: 8, destreza: 8, constituicao: 8, inteligencia: 8, sabedoria: 8, carisma: 8 });
@@ -25,7 +33,10 @@ export function CharacterWizard() {
   const [equipment, setEquipment] = useState<Equipment>({});
   const [name, setName] = useState('');
   const [backstory, setBackstory] = useState('');
-  const [portrait, setPortrait] = useState<PortraitSpec | null>(null);
+  const [portrait, setPortrait] = useState<PortraitSpec>(() => randomPortrait(`heroi-${Date.now()}`, 'semideus'));
+  const [show3d, setShow3d] = useState(true);
+  const [focus, setFocus] = useState<'corpo' | 'rosto'>('corpo');
+  const viewer = useRef<HeroViewerHandle | null>(null);
   const [busy, setBusy] = useState(false);
 
   const raceDef = RACES[race];
@@ -47,6 +58,8 @@ export function CharacterWizard() {
   // ───── Passo 1 → 2: trocar de raça pode invalidar a divindade ─────
   function pickRace(k: RaceKey) {
     setRace(k);
+    // O traço racial do rosto acompanha a raça, a não ser que o jogador tenha escolhido outro.
+    if (portrait.race === raceFeatureFor(race)) setPortrait({ ...portrait, race: raceFeatureFor(k) });
     const allowed = (RACES[k] as { allowedDivinities?: readonly string[] }).allowedDivinities;
     if (allowed && !allowed.includes(divinity)) setDivinity(allowed[0] as DivinityKey);
   }
@@ -62,6 +75,7 @@ export function CharacterWizard() {
     const next = { ...scores, [a]: v };
     if (validatePointBuy(next).spent > POINT_BUY_BUDGET) return toast('Pontos insuficientes', 'erro');
     setScores(next);
+    if (v > scores[a]) viewer.current?.play(ABILITY_ACTION[a]);
   }
 
   function applyStandardArray() {
@@ -85,7 +99,7 @@ export function CharacterWizard() {
     return canUseItem(build, item);
   }
 
-  function autoEquip() {
+  function suggestedEquipment(): Equipment {
     const eq: Equipment = {};
     for (const key of inventoryKeys) {
       const item = ITEMS[key];
@@ -96,7 +110,11 @@ export function CharacterWizard() {
     }
     const main = eq.mainHand ? ITEMS[eq.mainHand] : undefined;
     if (main?.kind === 'arma' && main.properties.includes('duas_maos')) delete eq.shield;
-    setEquipment(eq);
+    return eq;
+  }
+
+  function autoEquip() {
+    setEquipment(suggestedEquipment());
   }
 
   function toggleExtra(key: string) {
@@ -114,8 +132,7 @@ export function CharacterWizard() {
   async function submit() {
     setBusy(true);
     try {
-      const face = portrait ?? randomPortrait(`${name || 'heroi'}-${race}`, race);
-      const r = await api<{ character: CharacterDTO }>('/characters', { method: 'POST', json: { ...input, name, portrait: face } });
+      const r = await api<{ character: CharacterDTO }>('/characters', { method: 'POST', json: { ...input, name, portrait } });
       toast(`${r.character.name} está pronto(a) para a aventura!`, 'sucesso');
       navigate(`/personagem/${r.character.id}`);
     } catch (e) {
@@ -135,8 +152,25 @@ export function CharacterWizard() {
 
   const stats = validation.stats;
 
+  // Antes de equipar, o boneco já aparece com o kit da classe.
+  const previewEquipment = Object.values(equipment).some(Boolean) ? equipment : suggestedEquipment();
+  const heroConfig = { classKey, race, divinity, portrait, equipment: previewEquipment, inventory: inventoryKeys };
+  const goTo = (n: number) => { setStep(n); setFocus(n === 4 ? 'rosto' : 'corpo'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+
   return (
-    <div className="mx-auto max-w-4xl space-y-4 p-4 pb-28">
+    <div className="mx-auto max-w-7xl p-3 pb-28 sm:p-4 lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-5">
+      <aside className={cx('z-10 mb-3 lg:sticky lg:top-4 lg:mb-0 lg:h-[calc(100vh-7rem)]', show3d ? 'sticky top-0 h-[44vh] sm:h-[52vh]' : 'h-auto')}>
+        {show3d ? (
+          <Suspense fallback={<div className="flex h-full items-center justify-center rounded-2xl bg-slate-950 text-sm text-amber-200">⚒️ Preparando o palco…</div>}>
+            <HeroViewer config={heroConfig} focus={focus} className="h-full" compact onReady={(h) => (viewer.current = h)} />
+          </Suspense>
+        ) : null}
+        <div className="mt-1 flex items-center justify-between px-1 text-xs text-slate-400">
+          <span className="truncate">{name || 'Seu herói'} · {raceDef.label} {cls.label} · {divDef.symbol} {divDef.label}</span>
+          <button type="button" onClick={() => setShow3d(!show3d)} className="shrink-0 rounded px-2 py-0.5 hover:bg-white/10">{show3d ? '▴ ocultar 3D' : '▾ mostrar herói 3D'}</button>
+        </div>
+      </aside>
+      <div className="space-y-4">
       <header className="flex items-center justify-between">
         <Button variant="ghost" size="sm" onClick={() => navigate('/')}>← Voltar</Button>
         <h1 className="font-display text-xl text-amber-200">Novo herói</h1>
@@ -332,8 +366,12 @@ export function CharacterWizard() {
               <TextArea label="História (opcional)" value={backstory} onChange={setBackstory} />
             </div>
           </Card>
-          <Card title="🎭 Rosto do herói">
-            <PortraitEditor value={portrait} onChange={setPortrait} race={race} name={name} />
+          <Card title="🎭 Rosto do herói" actions={<Button size="sm" variant="subtle" onClick={() => setFocus('rosto')}>🔍 Ver de perto</Button>}>
+            <PortraitEditor value={portrait} onChange={(p) => { setPortrait(p); setFocus('rosto'); }} race={race} name={name} />
+            <p className="mt-2 text-xs text-slate-400">Pele, cabelo, olhos e traço racial valem para o retrato e para o boneco 3D.</p>
+          </Card>
+          <Card title="🧍 Corpo e roupa" actions={<Button size="sm" variant="subtle" onClick={() => setFocus('corpo')}>🧍 Corpo inteiro</Button>}>
+            <LookEditor spec={portrait} onChange={(p) => { setPortrait(p); setFocus('corpo'); }} />
           </Card>
           <Card title="Revisão">
             <p className="font-display text-lg">{name || '???'} — {raceDef.label} {cls.label}, {divDef.symbol} {divDef.label}</p>
@@ -360,11 +398,12 @@ export function CharacterWizard() {
         </div>
       )}
 
+      </div>
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-white/10 bg-slate-950/95 p-3 backdrop-blur">
         <div className="mx-auto flex max-w-4xl gap-2">
-          <Button variant="ghost" className="flex-1" disabled={step === 0} onClick={() => setStep(step - 1)}>Anterior</Button>
+          <Button variant="ghost" className="flex-1" disabled={step === 0} onClick={() => goTo(step - 1)}>Anterior</Button>
           {step < STEPS.length - 1 ? (
-            <Button variant="gold" className="flex-[2]" disabled={!canNext} onClick={() => { if (step === 2 && !Object.keys(equipment).length) setTimeout(autoEquip, 0); setStep(step + 1); }}>Próximo</Button>
+            <Button variant="gold" className="flex-[2]" disabled={!canNext} onClick={() => { if (step === 2 && !Object.keys(equipment).length) setTimeout(autoEquip, 0); goTo(step + 1); }}>Próximo</Button>
           ) : (
             <Button variant="gold" className="flex-[2]" disabled={!canNext || busy} onClick={submit}>{busy ? 'Forjando...' : '⚔️ Criar herói'}</Button>
           )}

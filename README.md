@@ -290,6 +290,35 @@ Fórmulas `NdX±M` combináveis (`1d8+1d6+2`), `kh`/`kl` (vantagem `2d20kh1`), e
 
 Cada herói ganha um retrato gerado (SVG em camadas, por semente): formato do rosto, cabelo, olhos, boca, barba, cicatriz, acessório, pele e traço de raça (chifres de sátiro, folhas de ninfa, olho de ciclope…). Dá para sortear e ajustar na criação ou depois, na ficha. O rosto aparece no token do mapa, com o emblema da classe.
 
+### Herói em 3D na criação (estilo criador de personagem de RPG de PC)
+
+- **Palco:** o herói aparece em 3D animado num pedestal de mármore grego, com colunas, névoa e partículas na cor do pai olímpico. Arraste para girar; use pinça ou roda para aproximar do rosto.
+- **Cada escolha reage na hora:**
+  - Trocar a classe troca a silhueta: hoplita, bárbaro, sábio, aventureiro ou encapuzado.
+  - Escolher o deus faz o herói ser **reclamado**: o símbolo brilha sobre a cabeça.
+  - Investir em Força faz golpear; Destreza, esquivar; Inteligência, conjurar.
+  - A arma equipada aparece na mão com o golpe certo: espada, montante, machado, adaga, besta, arco, lança, tridente, martelo, cajado ou varinha. O escudo, o grimório e a lira vão na outra mão.
+- **Aparência:**
+  - Pele, cabelo e olhos vêm do retrato.
+  - Traços de raça: chifres de sátiro, coroa de folhas de ninfa, olho único de ciclope, diadema lunar das caçadoras.
+  - Roupa: cor livre, com o laranja do Acampamento incluído.
+  - Altura, porte e elmo/chapéu ajustáveis.
+- **13 animações:** atacar, defender, magia, esquivar, pular, comemorar, reclamado, andar, correr, fogueira, ferido, cair e parado.
+- **Também na ficha:** o herói aparece em 3D, e a aparência pode ser editada depois.
+- **Técnica:**
+  - three.js, carregado só quando a tela abre.
+  - Modelos KayKit (CC0), ~2,8 MB no total, com animações compartilhadas.
+  - Funciona no celular; sem WebGL, vale o retrato 2D.
+
+### Arte dos monstros com IA local
+
+Na aba **🎨 Arte** do Host, a mesa pinta a arte de cada monstro usando o **ComfyUI** no próprio PC do Mestre (RTX 2060 Super: ~20 a 60 s por monstro). A pintura vira o token no mapa de todos na hora.
+
+- Dá para editar a descrição, gerar outra versão, enviar uma imagem sua ou voltar ao ícone.
+- Pelo terminal: `npm run art`.
+- Workflows próprios, como FLUX, também funcionam.
+- Passo a passo em [`docs/ARTE_COM_IA.md`](docs/ARTE_COM_IA.md).
+
 ---
 
 ## Permissões (RBAC)
@@ -346,6 +375,10 @@ Base: `/api`. Rotas autenticadas exigem `Authorization: Bearer <accessToken>`.
 | DELETE | `/campaigns/:id/saves/:saveId` | Excluir save |
 | GET · POST · DELETE | `/campaigns/:id/items[/:itemId]` | Catálogo + itens personalizados |
 | GET | `/host/info` | URLs da rede local (Mestre) |
+| GET | `/art` | Artes pintadas dos monstros (`{ monsters: { chave: url } }`) |
+| GET | `/art/comfy` · `/art/prompts` · `/art/jobs` | Status do ComfyUI, descrições padrão, fila de geração (Mestre) |
+| POST | `/art/monsters/:key/generate` | `{ prompt?, seed?, checkpoint?, steps? }`: entra na fila (202) |
+| PUT · DELETE | `/art/monsters/:key` | Enviar imagem (`{ image: dataURL }`) / voltar ao ícone |
 
 ---
 
@@ -366,6 +399,7 @@ Conexão: `io(URL, { auth: { token: accessToken } })`. A sessão recupera evento
 | `table:fx` | Efeitos visuais e novas entradas do log visíveis para você |
 | `table:presence` | Jogador conectou/desconectou |
 | `table:kicked` | Você foi banido |
+| `art:updated` | A arte de um monstro mudou (os clientes recarregam `/api/art`) |
 
 Os comandos são validados com zod (`shared/src/engine/commands.ts`):
 
@@ -381,7 +415,7 @@ npm run db:up        # o banco mesa_rpg_test é criado pelo docker compose
 npm test             # motor (shared) + integração (server)
 ```
 
-**121 testes:**
+**125 testes:**
 
 - **Motor e guardas do frontend (`shared/tests`, 82):**
   - Dados: parser, vantagem, críticos, limites.
@@ -396,7 +430,7 @@ npm test             # motor (shared) + integração (server)
   - Side quests com gatilho e migração de saves.
   - Monstros agindo sozinhos, dano/cura, testes contra a morte, testes pedidos, XP e nível, recompensas de quest, baús e carga de aventura.
   - Guarda de regressão: nenhum `useEffect` dos clientes devolve valor por engano (causa da tela quebrando).
-- **Integração (`server/tests`, 39, com PostgreSQL real):**
+- **Integração (`server/tests`, 43, com PostgreSQL real):**
   - Autenticação: Argon2id, primeiro usuário Mestre, convite, login, refresh por cookie e revogação.
   - Papéis: código de Mestre tolerante a espaços e maiúsculas, conta existente virando Mestre, Mestre jogando na campanha de outro.
   - Criação e edição de fichas via API.
@@ -407,6 +441,7 @@ npm test             # motor (shared) + integração (server)
   - Pausar e banir.
   - Save/load idêntico e histórico filtrado.
   - Recompensa com subida de nível persistida, baú aberto e teste pedido pelo Mestre resolvido pelo jogador.
+  - Arte com IA contra um ComfyUI simulado: workflow enviado, imagem salva e servida, upload, recusa de não-imagens e workflows próprios.
 
 Por segurança, a bateria se recusa a rodar se `TEST_DATABASE_URL` não tiver "test" no nome, porque ela recria o schema do zero.
 

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { io, type Socket } from 'socket.io-client';
+import { loadPaintedArt } from './tokenArt';
 import {
   EVENTS, type Command, type Fx, type FxPayload, type LogEntry, type ProjectedState, type StatePayload,
 } from '@mesa/shared';
@@ -129,6 +130,7 @@ export const useTable = create<TableStore>((set, get) => ({
       set({ fx: [...get().fx, ...events].slice(-40) });
       notifyLog(p.log);
     });
+    s.on(EVENTS.ART, () => void loadPaintedArt(true));
     s.on(EVENTS.KICKED, (p: { reason: string }) => {
       set({ kicked: p.reason, status: 'desconectado' });
       toast(p.reason, 'erro');

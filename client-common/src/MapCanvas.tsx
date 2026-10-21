@@ -3,7 +3,7 @@ import { Application, Container, DisplacementFilter, Graphics, Sprite, Text } fr
 import { useEffect, useRef } from 'react';
 import { CONDITIONS, SURFACES, type ProjectedState } from '@mesa/shared';
 import { useTable, type FxEvent } from './stores';
-import { artKeyFor, getArtTexture, onArtLoaded } from './tokenArt';
+import { artKeyFor, getArtTexture, isPainted, loadPaintedArt, onArtLoaded } from './tokenArt';
 import { MOOD_STYLE, TILE, buildStaticLayers, glowTexture, noiseTexture, staticSignature, type Animated, type StaticLayers } from './mapRender';
 import { getPortraitTexture, onPortraitLoaded } from './portrait';
 
@@ -368,11 +368,19 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
       c.addChild(g);
       const face = t.kind === 'personagem' && !t.dead ? getPortraitTexture(t.face) : null;
       const tex = face ?? (t.dead ? null : getArtTexture(artKeyFor(t)));
+      const painted = !face && !t.dead && isPainted(artKeyFor(t));
       if (tex) {
         const icon = new Sprite(tex);
         icon.anchor.set(0.5);
-        icon.width = icon.height = face ? TILE * 0.74 : TILE * 0.56;
+        icon.width = icon.height = face ? TILE * 0.74 : painted ? TILE * 0.8 : TILE * 0.56;
         c.addChild(icon);
+        if (painted) {
+          // Pintura recortada no círculo do token, com aro escuro de monstro
+          const mask = new Graphics().circle(0, 0, TILE * 0.38).fill(0xffffff);
+          c.addChild(mask);
+          icon.mask = mask;
+          c.addChild(new Graphics().circle(0, 0, TILE * 0.39).stroke({ width: 3, color: t.kind === 'monstro' ? 0x7a1010 : 0xffffff }));
+        }
         // Herói com rosto: ícone da classe pequeno no canto
         if (face) {
           const cls = getArtTexture(artKeyFor({ ...t, portrait: t.portrait }));
@@ -460,6 +468,7 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
   useEffect(() => {
     const off = onArtLoaded(() => drawRef.current());
     const off2 = onPortraitLoaded(() => drawRef.current());
+    void loadPaintedArt();
     return () => {
       off();
       off2();

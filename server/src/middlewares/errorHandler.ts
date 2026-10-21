@@ -23,6 +23,10 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
   if (err instanceof ValidationError) return res.status(400).json({ error: err.message });
   if (err instanceof SyntaxError && 'body' in err) return res.status(400).json({ error: 'JSON inválido' });
 
+  // Erros "http-errors" (ex.: arquivo estático inexistente em /art)
+  const status = (err as { status?: unknown })?.status;
+  if (typeof status === 'number' && status >= 400 && status < 500) return res.status(status).json({ error: status === 404 ? 'Arquivo não encontrado' : 'Requisição inválida' });
+
   console.error('❌ Erro não tratado:', err);
   return res.status(500).json({ error: 'Erro interno do servidor' });
 }

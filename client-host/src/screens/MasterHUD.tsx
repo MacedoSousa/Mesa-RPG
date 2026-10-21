@@ -1,3 +1,4 @@
+import { ArtPanel } from '../panels/ArtPanel';
 import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { OBJECTS, SURFACES, TERRAIN, type Command, type Token } from '@mesa/shared';
@@ -10,7 +11,7 @@ import { ChaptersPanel, QuestsPanel } from '../panels/StoryPanels';
 import { MapPanel, MonstersPanel, PlayersPanel, SavesPanel } from '../panels/WorldPanels';
 import { toolLabel, type Tool } from '../tools';
 
-type Panel = 'combate' | 'testes' | 'capitulos' | 'quests' | 'monstros' | 'jogadores' | 'mapa' | 'saves';
+type Panel = 'combate' | 'testes' | 'capitulos' | 'quests' | 'monstros' | 'arte' | 'jogadores' | 'mapa' | 'saves';
 
 export function MasterHUD({ campaignId }: { campaignId: string }) {
   const { state, status, connect, disconnect, send } = useTable();
@@ -134,7 +135,7 @@ export function MasterHUD({ campaignId }: { campaignId: string }) {
             onChange={setPanel}
             tabs={[
               { key: 'combate', label: '⚔️ Combate' }, { key: 'testes', label: '🎯 Testes & 🎁' }, { key: 'capitulos', label: '📖 Fases' }, { key: 'quests', label: '📜 Quests' },
-              { key: 'monstros', label: '👹 Monstros' }, { key: 'jogadores', label: '🧑‍🤝‍🧑 Jogadores' }, { key: 'mapa', label: '🗺️ Mapa' }, { key: 'saves', label: '💾 Saves' },
+              { key: 'monstros', label: '👹 Monstros' }, { key: 'arte', label: '🎨 Arte' }, { key: 'jogadores', label: '🧑‍🤝‍🧑 Jogadores' }, { key: 'mapa', label: '🗺️ Mapa' }, { key: 'saves', label: '💾 Saves' },
             ]}
           />
           <div className="min-h-0 flex-1 overflow-y-auto p-3">
@@ -143,6 +144,7 @@ export function MasterHUD({ campaignId }: { campaignId: string }) {
             {panel === 'capitulos' && <ChaptersPanel state={state} />}
             {panel === 'quests' && <QuestsPanel state={state} />}
             {panel === 'monstros' && <MonstersPanel tool={tool} setTool={setTool} />}
+            {panel === 'arte' && <ArtPanel />}
             {panel === 'jogadores' && <PlayersPanel campaignId={campaignId} state={state} />}
             {panel === 'mapa' && <MapPanel campaignId={campaignId} state={state} tool={tool} setTool={setTool} />}
             {panel === 'saves' && <SavesPanel campaignId={campaignId} />}

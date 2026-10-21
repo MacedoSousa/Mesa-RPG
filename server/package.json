@@ -12,7 +12,8 @@
     "migrate:down": "tsx src/database/cli.ts down",
     "seed": "tsx src/database/cli.ts seed",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand",
+    "art": "node dist/art/cli.js"
   },
   "dependencies": {
     "@mesa/shared": "*",

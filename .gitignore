@@ -42,3 +42,4 @@ Desktop.ini
 .godot/
 .import/
 export_presets.cfg
+server/data/

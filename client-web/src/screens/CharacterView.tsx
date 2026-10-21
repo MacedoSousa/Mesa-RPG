@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { ABILITIES, ABILITY_LABELS, SKILLS, formatModifier, type EquipmentSlot, type Skill } from '@mesa/shared';
 import { Badge, Bar, Button, Card, Modal, PortraitEditor, Spinner, Term, TextArea, api, cx, errorMessage, isPortraitSpec, navigate, portraitUrl, randomPortrait, toast, type PortraitSpec } from '@mesa/common';
 import type { CharacterDTO } from '../types';
+import { LookEditor } from '../hero3d/LookEditor';
+
+const HeroViewer = lazy(() => import('../hero3d/HeroViewer'));
 
 const SLOT_FOR: Record<string, EquipmentSlot> = { arma: 'mainHand', armadura: 'armor', escudo: 'shield' };
 
@@ -138,14 +141,35 @@ export function CharacterView({ id }: { id: string }) {
         </div>
       </Card>
 
+      <Card title="🧍 Herói em 3D" actions={<Button size="sm" variant="subtle" onClick={() => setEditFace(isPortraitSpec(c.portrait) ? c.portrait : randomPortrait(c.name, c.race))}>✏️ Aparência</Button>}>
+        <Suspense fallback={<div className="flex h-[420px] items-center justify-center text-sm text-amber-200">⚒️ Preparando o palco…</div>}>
+          <HeroViewer
+            className="h-[420px] sm:h-[480px]"
+            compact
+            config={{
+              classKey: c.classKey, race: c.race, divinity: c.divinity,
+              portrait: editFace ?? (isPortraitSpec(c.portrait) ? c.portrait : randomPortrait(c.name, c.race)),
+              equipment: c.equipment, inventory: c.inventory.map((i) => i.itemKey),
+            }}
+          />
+        </Suspense>
+        <p className="mt-2 text-xs text-slate-400">Troque a arma ou o escudo acima e veja o boneco mudar. Pele, cabelo e traço racial vêm do retrato.</p>
+      </Card>
+
       <Card title="Ficha narrativa">
         {c.sheet?.backstory && <p className="mb-3 whitespace-pre-wrap text-sm text-slate-300">{c.sheet.backstory}</p>}
         <TextArea label="Anotações (pistas, dívidas, NPCs...)" value={notes} onChange={setNotes} rows={5} />
         <Button className="mt-2" size="sm" onClick={saveNotes}>Salvar anotações</Button>
       </Card>
 
-      <Modal open={!!editFace} onClose={() => setEditFace(null)} title="🎭 Rosto do herói">
+      <Modal open={!!editFace} onClose={() => setEditFace(null)} title="🎭 Aparência do herói">
         {editFace && <PortraitEditor value={editFace} onChange={setEditFace} race={c.race} name={c.name} />}
+        {editFace && (
+          <div className="mt-4 border-t border-white/10 pt-3">
+            <p className="mb-2 font-display text-amber-200">🧍 Corpo e roupa (3D)</p>
+            <LookEditor spec={editFace} onChange={setEditFace} />
+          </div>
+        )}
         <div className="mt-3 flex justify-end gap-2">
           <Button variant="ghost" onClick={() => setEditFace(null)}>Cancelar</Button>
           <Button
@@ -155,13 +179,13 @@ export function CharacterView({ id }: { id: string }) {
                 const r = await api<{ character: CharacterDTO }>(`/characters/${c.id}/portrait`, { method: 'PUT', json: { portrait: editFace } });
                 setC(r.character);
                 setEditFace(null);
-                toast('Rosto salvo! Se você estiver numa mesa, o token já mudou.', 'sucesso');
+                toast('Aparência salva! Se você estiver numa mesa, o token já mudou.', 'sucesso');
               } catch (e) {
                 toast(errorMessage(e), 'erro');
               }
             }}
           >
-            Salvar rosto
+            Salvar aparência
           </Button>
         </div>
       </Modal>
