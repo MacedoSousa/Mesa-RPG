@@ -25,13 +25,32 @@ export const MONSTER_PROMPTS: Record<string, string> = {
   avatar_ares: 'a menacing war god in mortal guise, leather jacket, burning eyes behind dark sunglasses, scarred face, bronze sword',
 };
 
-export const ART_STYLE =
-  'fantasy tabletop RPG token portrait, ancient greek mythology, dramatic painted illustration, rich colors, centered, facing the viewer, dark vignette background, highly detailed digital painting';
+/** Enquadramento comum: retrato de token, centralizado, fundo escuro. */
+export const ART_FRAMING = 'tabletop RPG token portrait, ancient greek mythology, centered, facing the viewer, dark vignette background';
+
+/** Estilos de arte que o Mestre escolhe (cada um combina melhor com certos modelos). */
+export const ART_STYLES: Record<string, { label: string; prompt: string; lora?: RegExp; bestWith?: string }> = {
+  epico: { label: 'Pintura épica', prompt: 'dramatic painted illustration, rich colors, highly detailed digital painting, epic fantasy art' },
+  sombrio: { label: 'Fantasia sombria realista', prompt: 'dark fantasy, grim and gritty, photorealistic, cinematic lighting, volumetric fog, highly detailed', bestWith: 'Juggernaut' },
+  anime: { label: 'Anime', prompt: 'anime style, cel shading, vibrant colors, clean lineart, masterpiece, best quality', bestWith: 'animagine' },
+  pixel: { label: 'Pixel art 16-bit', prompt: 'pixel art, 16-bit retro game sprite, limited palette, crisp pixels', lora: /pixel/i },
+  aquarela: { label: 'Aquarela', prompt: 'watercolor painting, soft edges, paper texture, loose brush strokes, storybook illustration' },
+  vaso_grego: { label: 'Vaso grego (figuras negras)', prompt: 'ancient greek black-figure pottery painting, terracotta orange and black, amphora art, flat profile silhouette, meander border' },
+  quadrinhos: { label: 'Quadrinhos', prompt: 'comic book art, bold ink outlines, halftone shading, dynamic pose, vivid flat colors' },
+  livro: { label: 'Livro infantil fofo', prompt: 'cute chibi creature, soft pastel colors, childrens book illustration, friendly and adorable' },
+};
+export const ART_STYLE_KEYS = Object.keys(ART_STYLES);
+
+/** Compatibilidade: o estilo padrão. */
+export const ART_STYLE = `${ART_FRAMING}, ${ART_STYLES.epico.prompt}`;
 
 export const ART_NEGATIVE =
   'text, letters, watermark, signature, logo, frame, border, blurry, lowres, jpeg artifacts, deformed, extra limbs, cropped, multiple creatures, nsfw, gore';
 
-export function defaultPrompt(key: string): string {
-  const subject = MONSTER_PROMPTS[key] ?? `${MONSTERS[key]?.label ?? key}, mythical greek monster`;
-  return `${subject}, ${ART_STYLE}`;
+export function monsterSubject(key: string): string {
+  return MONSTER_PROMPTS[key] ?? `${MONSTERS[key]?.label ?? key}, mythical greek monster`;
+}
+
+export function defaultPrompt(key: string, style = 'epico'): string {
+  return `${monsterSubject(key)}, ${ART_FRAMING}, ${(ART_STYLES[style] ?? ART_STYLES.epico).prompt}`;
 }

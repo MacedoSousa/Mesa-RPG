@@ -1,7 +1,8 @@
 import express from 'express';
 import type { Server } from 'http';
 import request from 'supertest';
-import { fillWorkflow } from '../../src/services/artService';
+import { defaultWorkflow, fillWorkflow, profileFor } from '../../src/services/artService';
+import { defaultPrompt } from '../../src/art/prompts';
 import { app, auth, closeAll, registerUser, resetData, setupDatabase } from '../helpers';
 
 // PNG 1×1 válido
@@ -97,5 +98,27 @@ describe('Arte dos monstros com ComfyUI local', () => {
     const tpl = JSON.stringify({ '1': { inputs: { text: '{{PROMPT}}', seed: '{{SEED}}', unet_name: '{{CHECKPOINT}}' } } });
     const wf = fillWorkflow(tpl, { prompt: 'a "chimera"\nbreathing fire', negative: '', seed: 7, checkpoint: 'flux2-klein.safetensors' }) as Record<string, { inputs: Record<string, unknown> }>;
     expect(wf['1'].inputs).toEqual({ text: 'a "chimera"\nbreathing fire', seed: 7, unet_name: 'flux2-klein.safetensors' });
+  });
+
+  it('ajusta o workflow para cada família de modelo, LoRA e estilo', () => {
+    expect(profileFor('flux1-schnell-fp8.safetensors')).toMatchObject({ family: 'FLUX schnell', cfg: 1, steps: 4 });
+    expect(profileFor('DreamShaperXL_Turbo_v2_1.safetensors').family).toBe('SDXL Turbo');
+    expect(profileFor('animagine-xl-3.1.safetensors').family).toBe('SDXL Anime');
+    expect(profileFor('v1-5-pruned.safetensors')).toMatchObject({ family: 'SD 1.5', size: 512 });
+
+    const dev = defaultWorkflow({ checkpoint: 'flux1-dev-fp8.safetensors', prompt: 'x', negative: 'y', seed: 1 }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+    expect(dev['11'].class_type).toBe('FluxGuidance');
+    expect(dev['3'].inputs.positive).toEqual(['11', 0]);
+    expect(dev['3'].inputs.cfg).toBe(1);
+    expect(dev['7'].inputs.text).toBe(''); // FLUX ignora o negativo
+
+    const px = defaultWorkflow({ checkpoint: 'juggernautXL.safetensors', prompt: 'x', negative: 'y', seed: 1, lora: 'pixel-art-xl.safetensors', quality: 'rapida' }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+    expect(px['12']).toMatchObject({ class_type: 'LoraLoader', inputs: { lora_name: 'pixel-art-xl.safetensors' } });
+    expect(px['3'].inputs.model).toEqual(['12', 0]);
+    expect(px['6'].inputs.clip).toEqual(['12', 1]);
+    expect(px['3'].inputs.steps).toBeLessThan(28);
+
+    expect(defaultPrompt('harpia', 'vaso_grego')).toMatch(/black-figure pottery/);
+    expect(defaultPrompt('harpia', 'inexistente')).toMatch(/painted illustration/);
   });
 });

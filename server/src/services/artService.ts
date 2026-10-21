@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync,
 import path from 'path';
 import { MONSTERS } from '@mesa/shared';
 import { env } from '../config/env';
-import { ART_NEGATIVE, defaultPrompt } from '../art/prompts';
+import { ART_NEGATIVE, ART_STYLES, ART_STYLE_KEYS, defaultPrompt } from '../art/prompts';
 import { HttpError } from '../utils/HttpError';
 
 const badRequest = (msg: string) => new HttpError(400, msg);
@@ -37,6 +37,9 @@ export interface GenerateOptions {
   seed?: number;
   checkpoint?: string;
   steps?: number;
+  quality?: Quality;
+  style?: string;
+  lora?: string | null;
 }
 
 function assertKey(key: string) {
@@ -47,21 +50,51 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // ───────────── Cliente do ComfyUI ─────────────
 
-/** Workflow txt2img padrão do ComfyUI (formato "API"), só com nós nativos. Serve para SD 1.5 e SDXL. */
-export function defaultWorkflow(o: { checkpoint: string; prompt: string; negative: string; seed: number; steps: number; size: number }) {
-  return {
+/** Ajustes ideais de cada família de modelo (descobertos pelo nome do arquivo). */
+export interface ModelProfile { family: string; cfg: number; steps: number; sampler: string; scheduler: string; size: number; negative: boolean; guidance?: number }
+
+export function profileFor(checkpoint: string): ModelProfile {
+  const n = checkpoint.toLowerCase();
+  if (n.includes('flux') && n.includes('schnell')) return { family: 'FLUX schnell', cfg: 1, steps: 4, sampler: 'euler', scheduler: 'simple', size: 1024, negative: false };
+  if (n.includes('flux')) return { family: 'FLUX dev', cfg: 1, steps: 20, sampler: 'euler', scheduler: 'simple', size: 1024, negative: false, guidance: 3.5 };
+  if (/turbo|lightning|hyper/.test(n)) return { family: 'SDXL Turbo', cfg: 2, steps: 7, sampler: 'dpmpp_sde', scheduler: 'karras', size: 1024, negative: true };
+  if (n.includes('animagine') || n.includes('pony')) return { family: 'SDXL Anime', cfg: 6, steps: 26, sampler: 'euler_ancestral', scheduler: 'normal', size: 1024, negative: true };
+  if (/xl/.test(n)) return { family: 'SDXL', cfg: 6, steps: 28, sampler: 'dpmpp_2m', scheduler: 'karras', size: 1024, negative: true };
+  return { family: 'SD 1.5', cfg: 7, steps: 26, sampler: 'dpmpp_2m', scheduler: 'karras', size: 512, negative: true };
+}
+
+const QUALITY = { rapida: 0.65, boa: 1, caprichada: 1.4 } as const;
+export type Quality = keyof typeof QUALITY;
+
+/**
+ * Workflow txt2img (formato "API") só com nós nativos do ComfyUI. Serve para SD 1.5, SDXL e
+ * checkpoints FLUX "tudo em um" (fp8). LoRA opcional entre o modelo e o sampler.
+ */
+export function defaultWorkflow(o: { checkpoint: string; prompt: string; negative: string; seed: number; steps?: number; size?: number; lora?: string | null; loraStrength?: number; quality?: Quality }) {
+  const p = profileFor(o.checkpoint);
+  const steps = o.steps ?? Math.max(p.family === 'FLUX schnell' ? 4 : 4, Math.round(p.steps * QUALITY[o.quality ?? 'boa']));
+  const size = o.size ?? p.size;
+  const model: [string, number] = o.lora ? ['12', 0] : ['4', 0];
+  const clip: [string, number] = o.lora ? ['12', 1] : ['4', 1];
+  const wf: Record<string, { class_type: string; inputs: Record<string, unknown> }> = {
     '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: o.checkpoint } },
-    '5': { class_type: 'EmptyLatentImage', inputs: { width: o.size, height: o.size, batch_size: 1 } },
-    '6': { class_type: 'CLIPTextEncode', inputs: { text: o.prompt, clip: ['4', 1] } },
-    '7': { class_type: 'CLIPTextEncode', inputs: { text: o.negative, clip: ['4', 1] } },
+    '5': { class_type: 'EmptyLatentImage', inputs: { width: size, height: size, batch_size: 1 } },
+    '6': { class_type: 'CLIPTextEncode', inputs: { text: o.prompt, clip } },
+    '7': { class_type: 'CLIPTextEncode', inputs: { text: p.negative ? o.negative : '', clip } },
     '3': {
       class_type: 'KSampler',
-      inputs: { seed: o.seed, steps: o.steps, cfg: 6.5, sampler_name: 'dpmpp_2m', scheduler: 'karras', denoise: 1, model: ['4', 0], positive: ['6', 0], negative: ['7', 0], latent_image: ['5', 0] },
+      inputs: { seed: o.seed, steps, cfg: p.cfg, sampler_name: p.sampler, scheduler: p.scheduler, denoise: 1, model, positive: ['6', 0], negative: ['7', 0], latent_image: ['5', 0] },
     },
     '8': { class_type: 'VAEDecode', inputs: { samples: ['3', 0], vae: ['4', 2] } },
     '10': { class_type: 'ImageScale', inputs: { upscale_method: 'lanczos', width: 512, height: 512, crop: 'disabled', image: ['8', 0] } },
     '9': { class_type: 'SaveImage', inputs: { filename_prefix: 'mesa_rpg/monstro', images: ['10', 0] } },
   };
+  if (o.lora) wf['12'] = { class_type: 'LoraLoader', inputs: { model: ['4', 0], clip: ['4', 1], lora_name: o.lora, strength_model: o.loraStrength ?? 0.9, strength_clip: o.loraStrength ?? 0.9 } };
+  if (p.guidance) {
+    wf['11'] = { class_type: 'FluxGuidance', inputs: { conditioning: ['6', 0], guidance: p.guidance } };
+    wf['3'].inputs.positive = ['11', 0];
+  }
+  return wf;
 }
 
 /**
@@ -102,6 +135,15 @@ async function listCheckpoints(): Promise<string[]> {
   return info.CheckpointLoaderSimple?.input?.required?.ckpt_name?.[0] ?? [];
 }
 
+async function listLoras(): Promise<string[]> {
+  try {
+    const info = (await (await comfy('/object_info/LoraLoader')).json()) as { LoraLoader?: { input?: { required?: { lora_name?: [string[]] } } } };
+    return info.LoraLoader?.input?.required?.lora_name?.[0] ?? [];
+  } catch {
+    return [];
+  }
+}
+
 async function pickCheckpoint(wanted?: string): Promise<string> {
   const list = await listCheckpoints();
   if (wanted && list.includes(wanted)) return wanted;
@@ -112,12 +154,15 @@ async function pickCheckpoint(wanted?: string): Promise<string> {
   return list.find((n) => /xl/i.test(n)) ?? list[0];
 }
 
-async function runComfy(o: { prompt: string; negative: string; seed: number; checkpoint?: string; steps: number }): Promise<Buffer> {
+async function runComfy(o: { prompt: string; negative: string; seed: number; checkpoint?: string; steps?: number; quality?: Quality; lora?: string | null; style?: string }): Promise<Buffer> {
   const checkpoint = await pickCheckpoint(o.checkpoint);
-  const isXl = /xl/i.test(checkpoint);
+  // Estilo pixel art usa a LoRA de pixel se ela estiver instalada (e o modelo for SDXL)
+  let lora = o.lora ?? null;
+  const st = o.style ? ART_STYLES[o.style] : undefined;
+  if (!lora && st?.lora && /xl/i.test(checkpoint) && !/flux/i.test(checkpoint)) lora = (await listLoras()).find((l) => st.lora!.test(l)) ?? null;
   const workflow = env.COMFYUI_WORKFLOW
     ? fillWorkflow(readFileSync(env.COMFYUI_WORKFLOW, 'utf8'), { ...o, checkpoint })
-    : defaultWorkflow({ ...o, checkpoint, size: isXl ? 1024 : 512 });
+    : defaultWorkflow({ ...o, checkpoint, lora });
   const clientId = randomUUID();
   const queued = (await (await comfy('/prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: workflow, client_id: clientId }) })).json()) as { prompt_id?: string; error?: unknown; node_errors?: unknown };
   if (!queued.prompt_id) throw new Error(`ComfyUI recusou o workflow: ${JSON.stringify(queued.error ?? queued.node_errors).slice(0, 300)}`);
@@ -191,18 +236,24 @@ export const artService = {
     try {
       const stats = (await (await comfy('/system_stats', undefined, 4000)).json()) as { devices?: { name?: string; vram_total?: number }[]; system?: { comfyui_version?: string } };
       const checkpoints = await listCheckpoints();
+      const loras = await listLoras();
       return {
-        ok: true, url: env.COMFYUI_URL, checkpoints, customWorkflow: !!env.COMFYUI_WORKFLOW,
+        ok: true, url: env.COMFYUI_URL, checkpoints, loras, customWorkflow: !!env.COMFYUI_WORKFLOW,
+        profiles: Object.fromEntries(checkpoints.map((c) => [c, profileFor(c).family])),
         gpu: stats.devices?.[0]?.name ?? null, vramGb: stats.devices?.[0]?.vram_total ? Math.round(stats.devices[0].vram_total / 1e9) : null,
         version: stats.system?.comfyui_version ?? null,
       };
     } catch (e) {
-      return { ok: false, url: env.COMFYUI_URL, error: (e as Error).message, checkpoints: [] as string[], customWorkflow: !!env.COMFYUI_WORKFLOW };
+      return { ok: false, url: env.COMFYUI_URL, error: (e as Error).message, checkpoints: [] as string[], loras: [] as string[], customWorkflow: !!env.COMFYUI_WORKFLOW };
     }
   },
 
-  prompts() {
-    return Object.fromEntries(Object.keys(MONSTERS).map((k) => [k, defaultPrompt(k)]));
+  prompts(style = 'epico') {
+    return Object.fromEntries(Object.keys(MONSTERS).map((k) => [k, defaultPrompt(k, style)]));
+  },
+
+  styles() {
+    return ART_STYLE_KEYS.map((k) => ({ key: k, label: ART_STYLES[k].label, bestWith: ART_STYLES[k].bestWith ?? null }));
   },
 
   jobs() {
@@ -214,7 +265,7 @@ export const artService = {
     if (jobs.filter((j) => j.status === 'na_fila' || j.status === 'gerando').length >= 40) throw badRequest('Fila de geração cheia');
     const job: ArtJob = {
       id: randomUUID(), key, status: 'na_fila',
-      prompt: (opts.prompt?.trim() || defaultPrompt(key)).slice(0, 1500),
+      prompt: (opts.prompt?.trim() || defaultPrompt(key, opts.style)).slice(0, 1500),
       seed: Number.isFinite(opts.seed) ? Math.floor(opts.seed!) : Math.floor(Math.random() * 2 ** 31),
       createdAt: Date.now(),
     };
@@ -224,8 +275,11 @@ export const artService = {
       job.status = 'gerando';
       onChange();
       try {
-        const buf = await runComfy({ prompt: job.prompt, negative: (opts.negative ?? ART_NEGATIVE).slice(0, 800), seed: job.seed, checkpoint: opts.checkpoint, steps: Math.min(60, Math.max(4, opts.steps ?? 26)) });
-        save(key, buf, { prompt: job.prompt, seed: job.seed, source: 'comfyui' });
+        const buf = await runComfy({
+          prompt: job.prompt, negative: (opts.negative ?? ART_NEGATIVE).slice(0, 800), seed: job.seed, checkpoint: opts.checkpoint,
+          steps: opts.steps ? Math.min(60, Math.max(1, opts.steps)) : undefined, quality: opts.quality, lora: opts.lora, style: opts.style,
+        });
+        save(key, buf, { prompt: job.prompt, seed: job.seed, style: opts.style ?? 'epico', checkpoint: opts.checkpoint ?? null, source: 'comfyui' });
         job.status = 'pronto';
         job.url = urlFor(key) ?? undefined;
       } catch (e) {

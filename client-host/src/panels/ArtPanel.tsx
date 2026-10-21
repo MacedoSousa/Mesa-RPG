@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { MONSTERS } from '@mesa/shared';
 import { Badge, Button, Select, TokenAvatar, api, cx, errorMessage, loadPaintedArt, paintedUrl, toast } from '@mesa/common';
 
-interface ComfyStatus { ok: boolean; url: string; error?: string; checkpoints: string[]; gpu?: string | null; vramGb?: number | null; customWorkflow: boolean }
+interface ComfyStatus { ok: boolean; url: string; error?: string; checkpoints: string[]; loras?: string[]; profiles?: Record<string, string>; gpu?: string | null; vramGb?: number | null; customWorkflow: boolean }
+interface Style { key: string; label: string; bestWith: string | null }
 interface Job { id: string; key: string; status: 'na_fila' | 'gerando' | 'pronto' | 'erro'; error?: string; seed: number; createdAt: number }
 
 const STATUS_LABEL: Record<Job['status'], string> = { na_fila: '⏳ na fila', gerando: '🎨 pintando…', pronto: '✅ pronto', erro: '❌ erro' };
@@ -35,7 +36,11 @@ export function ArtPanel() {
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [checkpoint, setCheckpoint] = useState('');
-  const [steps, setSteps] = useState(26);
+  const [quality, setQuality] = useState<'rapida' | 'boa' | 'caprichada'>('boa');
+  const [styles, setStyles] = useState<Style[]>([]);
+  const [style, setStyle] = useState('epico');
+  const [mixStyles, setMixStyles] = useState(false);
+  const [lora, setLora] = useState('');
   const [, bump] = useState(0);
   const fileFor = useRef<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -53,7 +58,7 @@ export function ArtPanel() {
   useEffect(() => {
     void refreshStatus();
     void loadPaintedArt(true).then(() => bump((n) => n + 1));
-    api<{ prompts: Record<string, string> }>('/art/prompts').then((r) => setPrompts(r.prompts)).catch(() => undefined);
+    api<{ prompts: Record<string, string>; styles: Style[] }>('/art/prompts').then((r) => { setPrompts(r.prompts); setStyles(r.styles ?? []); }).catch(() => undefined);
     api<{ jobs: Job[] }>('/art/jobs').then((r) => setJobs(r.jobs)).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -77,9 +82,15 @@ export function ArtPanel() {
 
   const lastJob = (key: string) => [...jobs].reverse().find((j) => j.key === key);
 
+  // Ao trocar o estilo, as descrições sugeridas acompanham
+  useEffect(() => {
+    api<{ prompts: Record<string, string> }>(`/art/prompts?style=${style}`).then((r) => setPrompts(r.prompts)).catch(() => undefined);
+  }, [style]);
+
   async function generate(key: string, prompt?: string) {
     try {
-      const r = await api<{ job: Job }>(`/art/monsters/${key}/generate`, { method: 'POST', json: { prompt, checkpoint: checkpoint || undefined, steps } });
+      const st = mixStyles && styles.length ? styles[Math.floor(Math.random() * styles.length)].key : style;
+      const r = await api<{ job: Job }>(`/art/monsters/${key}/generate`, { method: 'POST', json: { prompt, checkpoint: checkpoint || undefined, quality, style: st, lora: lora || undefined } });
       setJobs((js) => [...js, r.job]);
     } catch (e) {
       toast(errorMessage(e), 'erro');
@@ -90,7 +101,7 @@ export function ArtPanel() {
     const missing = Object.keys(MONSTERS).filter((k) => !paintedUrl(`monstro:${k}`) && !['na_fila', 'gerando'].includes(lastJob(k)?.status ?? ''));
     if (!missing.length) return toast('Todos os monstros já têm arte 🎨', 'info');
     for (const k of missing) await generate(k);
-    toast(`${missing.length} monstro(s) na fila. Cada um leva ~20–60 s na RTX 2060.`, 'info');
+    toast(`${missing.length} monstro(s) na fila. Na RTX 2060: SDXL Turbo ~10 s, SDXL ~40 s, FLUX ~1–2 min cada.`, 'info');
   }
 
   async function upload(file: File) {
@@ -127,10 +138,16 @@ export function ArtPanel() {
             {status.customWorkflow ? (
               <p className="mt-1 text-xs text-slate-300">Usando o workflow próprio de COMFYUI_WORKFLOW.</p>
             ) : (
+              <>
               <div className="mt-2 grid grid-cols-2 gap-2">
-                <Select label="Modelo" value={checkpoint} onChange={setCheckpoint} options={status.checkpoints.map((c) => ({ value: c, label: c }))} />
-                <Select label="Qualidade" value={String(steps)} onChange={(v) => setSteps(Number(v))} options={[{ value: '18', label: 'Rápida (18 passos)' }, { value: '26', label: 'Boa (26 passos)' }, { value: '36', label: 'Caprichada (36)' }]} />
+                <Select label="Modelo" value={checkpoint} onChange={setCheckpoint} options={status.checkpoints.map((c) => ({ value: c, label: `${c.replace(/\.safetensors$/, '')}${status.profiles?.[c] ? ` · ${status.profiles[c]}` : ''}` }))} />
+                <Select label="Estilo" value={style} onChange={setStyle} options={styles.map((st) => ({ value: st.key, label: st.label }))} />
+                <Select label="Qualidade" value={quality} onChange={(v) => setQuality(v as typeof quality)} options={[{ value: 'rapida', label: 'Rápida' }, { value: 'boa', label: 'Boa' }, { value: 'caprichada', label: 'Caprichada' }]} />
+                <Select label="LoRA (opcional)" value={lora} onChange={setLora} options={[{ value: '', label: '— automática —' }, ...(status.loras ?? []).map((l) => ({ value: l, label: l.replace(/\.safetensors$/, '') }))]} />
               </div>
+              <label className="mt-2 flex items-center gap-2 text-xs text-slate-300"><input type="checkbox" checked={mixStyles} onChange={(e) => setMixStyles(e.target.checked)} /> 🎲 Misturar estilos (cada monstro sai num estilo diferente)</label>
+              {styles.find((st) => st.key === style)?.bestWith && <p className="mt-1 text-[11px] text-slate-400">Dica: este estilo fica melhor com o modelo {styles.find((st) => st.key === style)?.bestWith}.</p>}
+              </>
             )}
           </>
         )}

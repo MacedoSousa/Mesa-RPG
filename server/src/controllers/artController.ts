@@ -7,7 +7,10 @@ const generateSchema = z.object({
   negative: z.string().max(800).optional(),
   seed: z.number().int().min(0).max(2 ** 32).optional(),
   checkpoint: z.string().max(200).optional(),
-  steps: z.number().int().min(4).max(60).optional(),
+  steps: z.number().int().min(1).max(60).optional(),
+  quality: z.enum(['rapida', 'boa', 'caprichada']).optional(),
+  style: z.string().max(30).optional(),
+  lora: z.string().max(200).nullable().optional(),
 });
 
 export const ArtController = {
@@ -17,8 +20,8 @@ export const ArtController = {
   async status(_req: Request, res: Response) {
     res.json(await artService.status());
   },
-  prompts(_req: Request, res: Response) {
-    res.json({ prompts: artService.prompts() });
+  prompts(req: Request, res: Response) {
+    res.json({ prompts: artService.prompts(String(req.query.style ?? 'epico')), styles: artService.styles() });
   },
   jobs(_req: Request, res: Response) {
     res.json({ jobs: artService.jobs() });

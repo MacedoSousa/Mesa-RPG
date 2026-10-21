@@ -15,7 +15,47 @@ Sem ComfyUI tudo continua funcionando: os monstros usam os ícones desenhados, e
 
 > Prefere o **app ComfyUI Desktop**? Também serve. Ele costuma usar outra porta (veja o endereço nas configurações do app) e você só precisa apontar `COMFYUI_URL` para ela (passo 3).
 
-## 2. Baixar um modelo (o "pintor")
+### No Ubuntu
+
+```bash
+sudo apt install -y python3-venv python3-pip git
+cd ~ && git clone https://github.com/comfyanonymous/ComfyUI.git
+cd ComfyUI && python3 -m venv venv && source venv/bin/activate
+pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu130
+pip install -r requirements.txt
+python main.py            # sobe em http://127.0.0.1:8188
+```
+
+O driver da NVIDIA precisa suportar CUDA 13: o `nvidia-smi` deve mostrar "CUDA Version: 13.0" ou mais.
+
+## 2. Baixar os modelos (os "pintores")
+
+**Jeito fácil (Ubuntu): o script da mesa baixa tudo.** Ele continua de onde parou se a internet cair e confere o espaço em disco antes.
+
+```bash
+cd ~/Mesa-RPG
+./scripts/baixar-modelos.sh essencial    # ~14 GB
+./scripts/baixar-modelos.sh completo     # ~38 GB (inclui anime e FLUX)
+./scripts/baixar-modelos.sh flux-dev     # opcional, ~17 GB
+./scripts/baixar-modelos.sh url "https://civitai.com/api/download/models/12345" meu-modelo.safetensors
+```
+
+| Modelo | Para quê | Pacote | Tempo por monstro (RTX 2060 Super, estimado) |
+|---|---|---|---|
+| DreamShaper XL Turbo v2.1 | Pintura de fantasia (o padrão) | essencial | ~10–15 s |
+| Juggernaut XL v9 | Realista / fantasia sombria | essencial | ~40 s |
+| Pixel Art XL (LoRA) | Estilo pixel art 16-bit | essencial | — |
+| Animagine XL 3.1 | Anime | completo | ~40 s |
+| FLUX.1 schnell (fp8) | Segue a descrição muito bem | completo | ~1–2 min (usa a RAM também) |
+| FLUX.1 dev (fp8) | Qualidade máxima (licença não comercial) | flux-dev | ~2–4 min |
+
+**Modelos que pedem login:**
+- No Hugging Face, aceite a licença na página do modelo e rode com `HF_TOKEN=hf_xxx ./scripts/baixar-modelos.sh …`.
+- No Civitai, use `CIVITAI_TOKEN=xxx`.
+
+A mesa reconhece a família pelo nome do arquivo (FLUX, Turbo, anime, SDXL, SD 1.5) e ajusta sozinha passos, CFG, sampler e tamanho.
+
+**À mão:**
 
 O modelo é um arquivo `.safetensors` que vai em `ComfyUI\models\checkpoints\`. Para arte de RPG pintada, um modelo **SDXL** fica ótimo e cabe nos 8 GB da RTX 2060 Super:
 
@@ -40,7 +80,28 @@ COMFYUI_TIMEOUT_SECONDS=300
 
 Reinicie a mesa (`npm start`).
 
-## 4. Pintar os monstros
+## 4. Estilos
+
+Na aba 🎨 Arte, escolha um **Estilo**:
+- Pintura épica
+- Fantasia sombria realista
+- Anime
+- Pixel art 16-bit (usa a LoRA de pixel, se estiver instalada)
+- Aquarela
+- Vaso grego (figuras negras)
+- Quadrinhos
+- Livro infantil fofo
+
+Para variar, marque **🎲 Misturar estilos**: cada monstro sai num estilo diferente.
+
+Pelo terminal:
+```bash
+npm run art -- --estilos                                   # lista estilos e modelos instalados
+npm run art -- --todos --estilo=sombrio --modelo=Juggernaut
+npm run art -- --todos --misturar --qualidade=caprichada
+```
+
+## 5. Pintar os monstros
 
 **Pelo Host (recomendado):** abra a mesa como Mestre → aba **🎨 Arte**.
 
@@ -63,13 +124,13 @@ npm run art -- harpia cerbero
 
 As imagens ficam em `server/data/art/monsters/` (uma `.png` + um `.json` com a descrição e a semente). Copie a pasta para guardar ou levar para outro PC.
 
-## 5. Dicas
+## 6. Dicas
 
 - **Quer outro estilo?** Edite a descrição. Exemplos: *"…, watercolor"*, *"…, dark souls style"*, *"…, cute chibi"*.
 - **A placa esquentou ou o PC travou?** Escolha a qualidade **Rápida (18 passos)** no painel.
 - **Jogo e IA ao mesmo tempo:** gere a arte **antes** da sessão. Durante o jogo, a GPU fica livre para o navegador.
 
-## 6. Usuário avançado: FLUX ou workflow próprio
+## 7. Usuário avançado: FLUX ou workflow próprio
 
 O padrão usa só os nós nativos do ComfyUI (Load Checkpoint → KSampler → VAE Decode → redimensionar para 512 → Save Image). Para usar **FLUX** ou outro fluxo:
 
