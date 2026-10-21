@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { CONDITIONS, CONDITION_KEYS, type ProjectedState, type Token } from '@mesa/shared';
-import { Badge, Button, Field, cx, useTable } from '@mesa/common';
+import { Badge, Button, Field, TokenAvatar, artKeyFor, cx, useTable } from '@mesa/common';
 
 export function CombatPanel({ state, selectedId, onSelect }: { state: ProjectedState; selectedId: string | null; onSelect: (id: string | null) => void }) {
   const send = useTable((s) => s.send);
@@ -45,7 +45,7 @@ export function CombatPanel({ state, selectedId, onSelect }: { state: ProjectedS
                 <li key={e.tokenId}>
                   <button onClick={() => onSelect(t.id)} className={cx('flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm', current ? 'bg-amber-500/25 ring-1 ring-amber-400' : 'bg-white/5', selectedId === t.id && 'outline outline-1 outline-sky-400', t.dead && 'opacity-40 line-through')}>
                     <span className="w-6 text-right font-mono text-amber-200">{e.initiative}</span>
-                    <span className="h-3 w-3 rounded-full" style={{ background: t.color }} />
+                    <TokenAvatar artKey={artKeyFor(t)} color={t.color} size={24} />
                     <span className="flex-1">{t.name}</span>
                     <span className="text-xs text-slate-300">{t.hp}/{t.maxHp}</span>
                     {eco && current && <span className="text-[10px] text-slate-400">A{eco.action} B{eco.bonusAction} R{eco.reaction} M{eco.movement}</span>}
@@ -72,7 +72,7 @@ export function TokenInspector({ token, onClose }: { token: Token; onClose: () =
   return (
     <div className="space-y-2 rounded-xl border border-sky-400/30 bg-sky-950/30 p-3">
       <div className="flex items-center justify-between">
-        <p className="font-display text-lg">{token.name}</p>
+        <p className="font-display flex items-center gap-2 text-lg"><TokenAvatar artKey={artKeyFor(token)} color={token.color} size={32} />{token.name} {token.emblem}</p>
         <button onClick={onClose} className="text-slate-400 hover:text-white">×</button>
       </div>
       <div className="flex flex-wrap gap-1 text-xs">

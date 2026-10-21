@@ -84,6 +84,16 @@ npm run dev
 
 O Vite encaminha `/api` e `/socket.io` para o servidor, então os cookies e o WebSocket funcionam como em produção.
 
+### Contas e papéis
+
+- **O papel vale por campanha.** Quem cria a campanha é o Mestre *dela*. Nas campanhas dos outros, essa mesma conta joga normalmente pelo endereço sem `/host`.
+- **Primeira conta do servidor = Mestre.** Nas contas seguintes, quem quiser mestrar usa o **código de Mestre** (`MASTER_INVITE_CODE` no `server/.env`, também mostrado no terminal ao iniciar). Ele pode ser usado no cadastro ou depois, em **"👑 Virar Mestre"**, na tela inicial do jogador ou no `/host`.
+  - Espaços nas pontas e maiúsculas/minúsculas são ignorados.
+  - Não confunda com o **código da campanha** (6 letras, ex.: `K7QX2M`), que é o que os jogadores usam para entrar numa mesa.
+- **Amigos que já têm conta:** abrem o endereço ou o QR code, tocam em **Entrar** com o usuário e a senha de sempre, escolhem o herói e digitam o código da campanha. O mesmo herói pode ir para campanhas diferentes.
+- **Trocar quem mestra:** se outra pessoa vai mestrar no seu PC, ela entra no `/host` com a conta dela (já liberada com o código de Mestre). Você abre o cliente de jogador no celular ou em outra aba anônima.
+- **Para conferir se o banco está ok:** abra `http://localhost:3333/api/health`. Deve mostrar `"database": "ok"`.
+
 ### Fluxo da primeira sessão
 
 1. **Mestre:** cria a campanha no HUD e recebe um código de convite (ex.: `K7QX2M`) com QR code.
@@ -142,6 +152,7 @@ Mesa-RPG/
 | Senhas | Argon2id (parâmetros OWASP) | Recomendação atual; bcrypt trunca senhas em 72 bytes. |
 | Sessão | Access JWT (15 min) em memória + refresh JWT em cookie HttpOnly | O JavaScript nunca vê o token longo. "Sair de todos os dispositivos" invalida tudo via `token_version`. |
 | Mapa | PixiJS 8 (WebGL) | Leve no celular. O estado do grid fica no motor; o Pixi só desenha. |
+| Ícones | SVG originais (`client-common/src/tokenArt.ts`) | Um por classe e por monstro, sem assets de terceiros. Fáceis de editar ou trocar. |
 | Testes | Jest + ts-jest, Supertest, socket.io-client | Testes contra um PostgreSQL de verdade (sem mocks de banco). |
 
 ### Fluxo de um comando
@@ -288,12 +299,13 @@ Base: `/api`. Rotas autenticadas exigem `Authorization: Bearer <accessToken>`.
 
 | Método | Rota | Descrição |
 |---|---|---|
-| GET | `/health` | Status |
+| GET | `/health` | Status do servidor e do banco |
 | GET | `/rules` | Catálogo completo (raças, divindades, classes, itens, monstros, terreno, guia) |
 | GET | `/rules/maps/:key` | Mapa padrão completo |
 | POST | `/auth/register` | `{ username, email, password, displayName?, masterCode? }` |
 | POST | `/auth/login` | `{ login (e-mail ou username), password }` |
 | POST | `/auth/refresh` | Usa o cookie HttpOnly `mesa_rt` |
+| POST | `/auth/promote` | `{ masterCode }`: conta existente vira Mestre |
 | POST | `/auth/logout` · `/auth/logout-all` | Sair / sair de todos os dispositivos |
 | GET · DELETE | `/auth/me` | Perfil / excluir conta (soft delete) |
 | GET · POST | `/characters` | Listar (`?includeDeleted=true` para a lixeira) / criar |
@@ -350,9 +362,9 @@ npm run db:up        # o banco mesa_rpg_test é criado pelo docker compose
 npm test             # motor (shared) + integração (server)
 ```
 
-**92 testes:**
+**102 testes:**
 
-- **Motor (`shared/tests`, 61):**
+- **Motor e guardas do frontend (`shared/tests`, 65):**
   - Dados: parser, vantagem, críticos, limites.
   - Point-buy e atributos derivados.
   - Restrições de armas e armaduras por classe, atributo, divindade e raça.
@@ -363,8 +375,10 @@ npm test             # motor (shared) + integração (server)
   - Ataques, empurrar e poder divino.
   - RBAC e informação oculta.
   - Side quests com gatilho e migração de saves.
-- **Integração (`server/tests`, 31, com PostgreSQL real):**
+  - Guarda de regressão: nenhum `useEffect` dos clientes devolve valor por engano (causa da tela quebrando).
+- **Integração (`server/tests`, 37, com PostgreSQL real):**
   - Autenticação: Argon2id, primeiro usuário Mestre, convite, login, refresh por cookie e revogação.
+  - Papéis: código de Mestre tolerante a espaços e maiúsculas, conta existente virando Mestre, Mestre jogando na campanha de outro.
   - Criação e edição de fichas via API.
   - Soft delete de usuários, personagens, fichas, campanhas e itens.
   - WebSockets: autenticação, entrada na mesa e bloqueio de comandos de Mestre.

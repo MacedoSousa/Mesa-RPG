@@ -4,7 +4,7 @@ import { toast } from './stores';
 import { Button, Card, Field, Tabs } from './ui';
 
 /** Tela de Login/Cadastro usada pelos dois clientes. */
-export function AuthScreen({ title, subtitle, allowMasterCode }: { title: string; subtitle: string; allowMasterCode?: boolean }) {
+export function AuthScreen({ title, subtitle, allowMasterCode, inviteCode }: { title: string; subtitle: string; allowMasterCode?: boolean; inviteCode?: string }) {
   const [mode, setMode] = useState<'login' | 'cadastro'>('login');
   const [form, setForm] = useState({ login: '', username: '', email: '', password: '', displayName: '', masterCode: '' });
   const [busy, setBusy] = useState(false);
@@ -37,6 +37,12 @@ export function AuthScreen({ title, subtitle, allowMasterCode }: { title: string
           <h1 className="font-display mt-2 text-3xl text-amber-200">{title}</h1>
           <p className="mt-1 text-slate-300">{subtitle}</p>
         </div>
+        {inviteCode && (
+          <div className="mb-3 rounded-xl border border-amber-400/40 bg-amber-950/40 p-3 text-sm">
+            🎟️ Você foi convidado(a) para a mesa <code className="font-bold text-amber-200">{inviteCode}</code>.{' '}
+            <strong>Já tem conta?</strong> Só entrar. <strong>Primeira vez?</strong> Toque em "Criar conta". Depois é só escolher seu herói.
+          </div>
+        )}
         <Card>
           <Tabs className="mb-4" value={mode} onChange={setMode} tabs={[{ key: 'login', label: 'Entrar' }, { key: 'cadastro', label: 'Criar conta' }]} />
           <form onSubmit={submit} className="space-y-3">
@@ -51,7 +57,13 @@ export function AuthScreen({ title, subtitle, allowMasterCode }: { title: string
             )}
             <Field label="Senha" type="password" value={form.password} onChange={set('password')} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required minLength={mode === 'cadastro' ? 8 : 1} hint={mode === 'cadastro' ? 'Mínimo de 8 caracteres' : undefined} />
             {mode === 'cadastro' && allowMasterCode && (
-              <Field label="Código de Mestre (opcional)" value={form.masterCode} onChange={set('masterCode')} hint="O primeiro cadastro do servidor já é Mestre. Para outros Mestres, use o MASTER_INVITE_CODE do .env." />
+              <Field
+                label="Código de Mestre (opcional)"
+                value={form.masterCode}
+                onChange={set('masterCode')}
+                autoComplete="off"
+                hint="Deixe vazio no primeiro cadastro: ele já vira Mestre. Para outro Mestre, use o MASTER_INVITE_CODE do server/.env (aparece no terminal do Host). Não é o código de 6 letras da campanha."
+              />
             )}
             <Button type="submit" variant="gold" size="lg" className="w-full" disabled={busy}>
               {busy ? 'Aguarde...' : mode === 'login' ? 'Entrar' : 'Criar conta'}

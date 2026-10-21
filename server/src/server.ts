@@ -26,6 +26,9 @@ async function bootstrap() {
     console.log(`\n⚡ Mesa RPG rodando na porta ${env.PORT}`);
     console.log(`   Mestre (Host): http://localhost:${env.PORT}/host`);
     for (const ip of lanAddresses()) console.log(`   Jogadores:     http://${ip}:${env.PORT}`);
+    console.log(env.MASTER_INVITE_CODE
+      ? `   Código de Mestre (para outra conta virar Mestre): ${env.MASTER_INVITE_CODE}`
+      : '   Código de Mestre: não definido (MASTER_INVITE_CODE no server/.env)');
     console.log('');
   });
 

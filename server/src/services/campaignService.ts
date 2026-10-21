@@ -33,13 +33,24 @@ export const CampaignService = {
     throw new HttpError(500, 'Não foi possível gerar um código de convite');
   },
 
+  /**
+   * Campanhas que o usuário mestra (com código de convite) e as que ele joga.
+   * O papel é POR CAMPANHA: um Mestre pode ser jogador na aventura de outra pessoa.
+   */
   async listFor(actor: Actor, includeDeleted = false) {
-    if (actor.role === 'MASTER') {
-      return Campaign.findAll({ where: { masterId: actor.userId }, paranoid: !includeDeleted, order: [['createdAt', 'DESC']] });
-    }
+    const owned = actor.role === 'MASTER'
+      ? await Campaign.findAll({ where: { masterId: actor.userId }, paranoid: !includeDeleted, order: [['createdAt', 'DESC']] })
+      : [];
     const memberships = await CampaignMember.findAll({ where: { userId: actor.userId, status: 'ativo' } });
-    if (!memberships.length) return [];
-    return Campaign.findAll({ where: { id: memberships.map((m) => m.campaignId) }, order: [['createdAt', 'DESC']] });
+    const joined = memberships.length
+      ? await Campaign.findAll({ where: { id: memberships.map((m) => m.campaignId) }, order: [['createdAt', 'DESC']] })
+      : [];
+    return [
+      ...owned.map((c) => ({ ...c.toJSON(), isMaster: true })),
+      ...joined
+        .filter((c) => c.masterId !== actor.userId)
+        .map((c) => ({ id: c.id, name: c.name, description: c.description, createdAt: c.createdAt, deletedAt: null, isMaster: false })),
+    ];
   },
 
   /** Garante acesso: Mestre dono ou jogador membro ativo (não banido). */

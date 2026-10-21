@@ -13,8 +13,20 @@ export const registerSchema = z.object({
   email: z.string().trim().toLowerCase().email('E-mail inválido'),
   password: z.string().min(8, 'A senha deve ter pelo menos 8 caracteres').max(128),
   displayName: z.string().trim().max(60).optional(),
-  masterCode: z.string().max(100).optional(),
+  masterCode: z.string().trim().max(100).optional(),
 });
+
+export const promoteSchema = z.object({ masterCode: z.string().trim().min(1, 'Informe o código de Mestre').max(100) });
+
+/** Comparação tolerante: ignora espaços nas pontas e maiúsculas/minúsculas. */
+export function isValidMasterCode(code: string | undefined): boolean {
+  const expected = env.MASTER_INVITE_CODE?.trim().toLowerCase();
+  return !!expected && !!code && code.trim().toLowerCase() === expected;
+}
+
+const WRONG_CODE =
+  'Código de Mestre incorreto. Ele fica no arquivo server/.env, na linha MASTER_INVITE_CODE (o terminal do Host também mostra ao iniciar). ' +
+  'Atenção: o código de 6 letras da campanha (ex.: K7QX2M) é outra coisa — ele serve para jogadores entrarem numa mesa.';
 
 export const loginSchema = z.object({
   login: z.string().trim().min(1, 'Informe e-mail ou username').max(255),
@@ -46,8 +58,9 @@ export const AuthService = {
 
     // O primeiro cadastro do servidor é o Mestre (dono do PC Host). Depois, só com código de convite.
     const hasMaster = (await User.count({ where: { role: 'MASTER' } })) > 0;
-    const validCode = !!env.MASTER_INVITE_CODE && data.masterCode === env.MASTER_INVITE_CODE;
-    if (data.masterCode && !validCode) throw new HttpError(403, 'Código de Mestre inválido');
+    const validCode = isValidMasterCode(data.masterCode);
+    // Sem nenhum Mestre ainda, o primeiro cadastro vira Mestre de qualquer jeito (código é ignorado)
+    if (hasMaster && data.masterCode && !validCode) throw new HttpError(403, WRONG_CODE, { code: 'master_code' });
     const role = !hasMaster || validCode ? 'MASTER' : 'PLAYER';
 
     const user = await User.create({
@@ -87,6 +100,16 @@ export const AuthService = {
     }
     const user = await User.findByPk(payload.sub);
     if (!user || user.tokenVersion !== payload.tv) throw new HttpError(401, 'Sessão revogada');
+    return { user, tokens: issueTokens(user) };
+  },
+
+  /** Conta existente de Jogador vira Mestre (também continua podendo jogar nas mesas dos outros). */
+  async promote(userId: string, input: unknown) {
+    const { masterCode } = promoteSchema.parse(input);
+    if (!isValidMasterCode(masterCode)) throw new HttpError(403, WRONG_CODE, { code: 'master_code' });
+    const user = await User.findByPk(userId);
+    if (!user) throw new HttpError(404, 'Usuário não encontrado');
+    if (user.role !== 'MASTER') await user.update({ role: 'MASTER' });
     return { user, tokens: issueTokens(user) };
   },
 

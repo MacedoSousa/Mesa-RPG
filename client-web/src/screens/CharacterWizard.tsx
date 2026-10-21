@@ -6,7 +6,7 @@ import {
   type AbilityScores, type CharacterBuild, type CharacterCreationInput, type ClassKey, type DivinityKey, type Equipment,
   type ItemDef, type RaceKey, type Skill,
 } from '@mesa/shared';
-import { Badge, Button, Card, Field, Term, TextArea, api, cx, errorMessage, navigate, toast } from '@mesa/common';
+import { Badge, Button, Card, Field, Term, TextArea, api, cx, errorMessage, navigate, toast, TokenAvatar } from '@mesa/common';
 import type { CharacterDTO } from '../types';
 
 const STEPS = ['Raça', 'Pai Olímpico', 'Atributos', 'Inventário', 'Revisão'];
@@ -205,7 +205,7 @@ export function CharacterWizard() {
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {CLASS_KEYS.map((k) => (
                 <button key={k} onClick={() => pickClass(k)} className={cx('rounded-lg border p-2 text-left', classKey === k ? 'border-amber-400 bg-amber-500/10' : 'border-white/10 bg-white/5 hover:bg-white/10')}>
-                  <p className="font-semibold">{CLASSES[k].label}</p>
+                  <p className="flex items-center gap-2 font-semibold"><TokenAvatar artKey={`classe:${k}`} color="#334155" size={30} />{CLASSES[k].label}</p>
                   <p className="text-[11px] text-slate-400">d{CLASSES[k].hitDie} · {CLASSES[k].primaryAbilities.map((a) => ABILITY_LABELS[a].short).join('/')}</p>
                 </button>
               ))}

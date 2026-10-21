@@ -31,6 +31,7 @@ export interface CampaignDTO {
   id: string;
   name: string;
   description: string;
-  joinCode: string;
-  masterId: string;
+  joinCode?: string;
+  masterId?: string;
+  isMaster?: boolean;
 }

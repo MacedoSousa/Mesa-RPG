@@ -26,6 +26,10 @@ Você decide **o que** tentar; os **dados** decidem se deu certo. Não existe je
 4. Toque em **+ Novo herói** e siga os 4 passos (abaixo).
 5. Volte ao início, digite o **código da campanha** (ex.: `K7QX2M`), escolha seu herói e entre na mesa.
 
+> **Já tem conta?** Pule o passo 3: toque em **Entrar** com seu usuário e senha. Seus heróis continuam lá e podem participar de várias campanhas.
+>
+> **Quer mestrar a próxima aventura?** Na tela inicial, abra **"👑 Quer mestrar a próxima aventura?"** e digite o código de Mestre que o dono do PC Host passar. Sua conta continua podendo jogar nas mesas dos outros.
+
 ---
 
 ## 3. Criando seu herói (4 passos)

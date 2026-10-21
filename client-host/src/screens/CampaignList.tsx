@@ -8,6 +8,7 @@ interface CampaignDTO {
   joinCode: string;
   deletedAt: string | null;
   createdAt: string;
+  isMaster?: boolean;
 }
 
 export function CampaignList() {
@@ -20,7 +21,9 @@ export function CampaignList() {
 
   async function load() {
     try {
-      setList((await api<{ campaigns: CampaignDTO[] }>(`/campaigns${trash ? '?includeDeleted=true' : ''}`)).campaigns);
+      // As mesas em que você é jogador aparecem no cliente do Jogador ("/"), não aqui
+      const all = (await api<{ campaigns: CampaignDTO[] }>(`/campaigns${trash ? '?includeDeleted=true' : ''}`)).campaigns;
+      setList(all.filter((c) => c.isMaster !== false));
     } catch (e) {
       toast(errorMessage(e), 'erro');
     }

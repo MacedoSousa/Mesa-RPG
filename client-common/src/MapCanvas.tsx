@@ -1,10 +1,11 @@
 import 'pixi.js/unsafe-eval'; // compatível com a Content-Security-Policy do servidor (sem eval)
-import { Application, Container, Graphics, Text } from 'pixi.js';
+import { Application, Container, Graphics, Sprite, Text } from 'pixi.js';
 import { useEffect, useRef } from 'react';
 import {
   CONDITIONS, OBJECTS, SURFACES, TERRAIN, type ProjectedState, type Tile,
 } from '@mesa/shared';
 import { useTable, type FxEvent } from './stores';
+import { artKeyFor, getArtTexture, onArtLoaded } from './tokenArt';
 
 export interface Cell {
   x: number;
@@ -289,7 +290,7 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
     L.surfaces.clear();
     L.marks.clear();
     for (const c of L.objects.removeChildren()) c.destroy();
-    for (const c of L.tokens.removeChildren()) c.destroy();
+    for (const c of L.tokens.removeChildren()) c.destroy({ children: true });
 
     for (let y = 0; y < map.height; y++) {
       for (let x = 0; x < map.width; x++) {
@@ -327,9 +328,26 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
       if (t.id === selectedTokenId) g.circle(0, 0, TILE * 0.44).stroke({ width: 3, color: 0x7cf3ff });
       g.circle(0, 0, TILE * 0.36).fill(t.dead ? 0x555555 : color).stroke({ width: 2, color: t.kind === 'monstro' ? 0x2a0000 : 0xffffff });
       c.addChild(g);
-      const label = new Text({ text: t.dead ? '✖' : t.name.slice(0, 2).toUpperCase(), style: { fontSize: 15, fontWeight: '700', fill: 0xffffff, stroke: { color: 0x000000, width: 3 } } });
-      label.anchor.set(0.5);
-      c.addChild(label);
+      // Ícone do token (classe do herói ou silhueta do monstro); iniciais enquanto a arte carrega
+      const tex = getArtTexture(artKeyFor(t));
+      if (tex && !t.dead) {
+        const icon = new Sprite(tex);
+        icon.anchor.set(0.5);
+        icon.width = icon.height = TILE * 0.56;
+        c.addChild(icon);
+      } else {
+        const label = new Text({ text: t.dead ? '✖' : t.name.slice(0, 2).toUpperCase(), style: { fontSize: 15, fontWeight: '700', fill: 0xffffff, stroke: { color: 0x000000, width: 3 } } });
+        label.anchor.set(0.5);
+        c.addChild(label);
+      }
+      // Emblema do pai olímpico no canto
+      if (t.emblem && !t.dead) {
+        const badge = new Graphics().circle(TILE * 0.3, -TILE * 0.3, 9).fill(0x0b1020).stroke({ width: 1.5, color: 0xffd34d });
+        const sym = new Text({ text: t.emblem, style: { fontSize: 11 } });
+        sym.anchor.set(0.5);
+        sym.position.set(TILE * 0.3, -TILE * 0.3);
+        c.addChild(badge, sym);
+      }
 
       // Barra de vida (aliados) ou anel de estado (monstros para jogadores)
       const hp = typeof t.hp === 'number' && typeof t.maxHp === 'number' ? t.hp / Math.max(1, t.maxHp) : null;
@@ -363,7 +381,18 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
     }
   }
 
-  useEffect(draw);
+  useEffect(() => {
+    draw();
+  });
+
+  const drawRef = useRef(draw);
+  drawRef.current = draw;
+  useEffect(() => {
+    const off = onArtLoaded(() => drawRef.current());
+    return () => {
+      off();
+    };
+  }, []);
 
   // ───── Efeitos visuais vindos do servidor ─────
   useEffect(() => {

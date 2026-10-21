@@ -91,6 +91,12 @@ export const Auth = {
     setSession(r.accessToken, r.user);
     return r.user;
   },
+  /** Conta existente vira Mestre com o código do server/.env (continua podendo jogar). */
+  async promote(masterCode: string) {
+    const r = await api<{ user: PublicUser; accessToken: string }>('/auth/promote', { method: 'POST', json: { masterCode } });
+    setSession(r.accessToken, r.user);
+    return r.user;
+  },
   async logout() {
     await api('/auth/logout', { method: 'POST' }).catch(() => undefined);
     setSession(null, null);

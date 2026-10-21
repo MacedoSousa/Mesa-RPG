@@ -86,6 +86,8 @@ export function tokenFromCharacter(c: CharacterSnapshot, x: number, y: number, i
     hidden: false,
     dead: false,
     color: COLORS[index % COLORS.length],
+    portrait: `classe:${c.build.classKey}`,
+    emblem: divinity?.symbol,
   };
 }
 
@@ -117,6 +119,7 @@ export function createMonsterToken(monsterKey: string, x: number, y: number, id:
     consumables: {},
     hidden: opts.hidden ?? false,
     dead: false,
-    color: '#b3261e',
+    color: '#7f1d1d',
+    portrait: `monstro:${monsterKey}`,
   };
 }

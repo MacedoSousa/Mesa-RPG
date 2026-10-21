@@ -135,7 +135,7 @@ export class TableManager {
         name: fresh.name, maxHp: fresh.maxHp, ac: fresh.ac, speed: fresh.speed, maxStamina: fresh.maxStamina,
         initiativeBonus: fresh.initiativeBonus, abilityMods: fresh.abilityMods, proficiency: fresh.proficiency,
         attacks: fresh.attacks, resistances: fresh.resistances, conditionAdvantage: fresh.conditionAdvantage, power: fresh.power,
-        consumables: fresh.consumables, hidden: false,
+        consumables: fresh.consumables, hidden: false, portrait: fresh.portrait, emblem: fresh.emblem,
       });
       existing.hp = Math.min(existing.hp, existing.maxHp);
       return;
@@ -143,7 +143,15 @@ export class TableManager {
     const preset = PRESET_MAPS.find((p) => p.key === state.map.preset);
     const spawn = preset?.spawns.find((s) => !state.tokens.some((t) => !t.dead && t.x === s.x && t.y === s.y));
     const pos = spawn ?? findFreeCell(state) ?? { x: 0, y: 0 };
-    state.tokens.push(tokenFromCharacter(data.snapshot, pos.x, pos.y, index, data.custom));
+    const token = tokenFromCharacter(data.snapshot, pos.x, pos.y, index, data.custom);
+    state.tokens.push(token);
+    // Entrou no meio do combate: rola iniciativa e entra no fim da fila da rodada
+    if (state.combat) {
+      const initiative = 1 + Math.floor(Math.random() * 20) + token.initiativeBonus;
+      state.combat.order.push({ tokenId: token.id, initiative });
+      state.combat.economy[token.id] = { action: 1, bonusAction: 1, reaction: 1, movement: token.speed };
+      createContext(state, SYSTEM_ACTOR).log(`⚔️ ${token.name} entra no combate (iniciativa ${initiative}).`, { type: 'combate' });
+    }
   }
 
   actorOf(user: SocketUser, masterId: string): Actor {

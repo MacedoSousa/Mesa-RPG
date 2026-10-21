@@ -74,6 +74,10 @@ export interface Token {
   hidden: boolean;
   dead: boolean;
   color?: string;
+  /** Arte do token: "classe:<classe>" para heróis, "monstro:<chave>" para monstros. */
+  portrait?: string;
+  /** Emblema pequeno (símbolo do pai olímpico). */
+  emblem?: string;
 }
 
 export interface Economy {

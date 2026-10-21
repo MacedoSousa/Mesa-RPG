@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  Auth, Badge, Button, Card, EmptyState, Field, Select, Spinner, api, errorMessage, navigate, toast, useSession,
+  Auth, Badge, Button, Card, EmptyState, Field, PromoteMaster, Select, Spinner, api, errorMessage, navigate, toast, useSession,
 } from '@mesa/common';
 import type { CampaignDTO, CharacterDTO } from '../types';
 
@@ -72,7 +72,7 @@ export function Home({ joinCode }: { joinCode?: string }) {
       <header className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-2xl text-amber-200">Olá, {user.displayName ?? user.username}!</h1>
-          <p className="text-sm text-slate-400">{user.role === 'MASTER' ? 'Você é Mestre — o HUD fica em /host' : 'Jogador(a)'}</p>
+          <p className="text-sm text-slate-400">{user.role === 'MASTER' ? 'Mestre e jogador(a): mestre no /host e jogue nas mesas dos amigos aqui' : 'Jogador(a)'}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="ghost" size="sm" onClick={() => navigate('/guia')}>📘 Guia</Button>
@@ -90,9 +90,13 @@ export function Home({ joinCode }: { joinCode?: string }) {
           <div className="mt-4 space-y-2">
             <p className="text-sm text-slate-400">Suas campanhas</p>
             {camps.map((c) => (
-              <button key={c.id} onClick={() => navigate(`/mesa/${c.id}`)} className="flex w-full items-center justify-between rounded-lg bg-white/5 px-3 py-2 text-left hover:bg-white/10">
-                <span className="font-semibold">{c.name}</span>
-                <span className="text-sm text-amber-300">Abrir mesa →</span>
+              <button
+                key={c.id}
+                onClick={() => (c.isMaster ? (window.location.href = `/host/#/mesa/${c.id}`) : navigate(`/mesa/${c.id}`))}
+                className="flex w-full items-center justify-between rounded-lg bg-white/5 px-3 py-2 text-left hover:bg-white/10"
+              >
+                <span className="font-semibold">{c.name} {c.isMaster && <Badge color="amber">você mestra</Badge>}</span>
+                <span className="text-sm text-amber-300">{c.isMaster ? 'Abrir HUD do Mestre →' : 'Abrir mesa →'}</span>
               </button>
             ))}
           </div>
@@ -138,6 +142,23 @@ export function Home({ joinCode }: { joinCode?: string }) {
               </div>
             ))}
           </div>
+        )}
+      </Card>
+      <Card title="👑 Quer mestrar a próxima aventura?">
+        {user.role === 'MASTER' ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-slate-300">
+            <span>Sua conta já é de Mestre. Crie e conduza campanhas no HUD; nas mesas dos amigos você joga normalmente por aqui.</span>
+            <Button variant="gold" size="sm" onClick={() => (window.location.href = '/host/')}>Abrir HUD do Mestre →</Button>
+          </div>
+        ) : (
+          <details>
+            <summary className="cursor-pointer text-sm text-slate-300">
+              Use o código de Mestre do Host para liberar o HUD nesta mesma conta. Seus heróis e campanhas continuam iguais.
+            </summary>
+            <div className="mt-3 max-w-sm">
+              <PromoteMaster />
+            </div>
+          </details>
         )}
       </Card>
     </div>

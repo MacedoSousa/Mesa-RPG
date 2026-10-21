@@ -5,8 +5,7 @@ import {
 } from '@mesa/shared';
 import {
   Badge, Bar, Button, LogFeed, MapCanvas, Spinner, Term, api, cx, navigate, toast, useSession, useTable,
-  type Cell, type Highlight,
-} from '@mesa/common';
+  type Cell, type Highlight, TokenAvatar, artKeyFor } from '@mesa/common';
 import type { CharacterDTO } from '../types';
 import { GuideContent } from './Guide';
 
@@ -78,6 +77,7 @@ export function PlayerTable({ campaignId }: { campaignId: string }) {
         <div className="rounded-xl border border-white/10 bg-slate-950/85 p-2 shadow-xl backdrop-blur">
           <div className="flex items-center gap-2">
             <button onClick={() => navigate('/')} className="rounded-lg px-1 text-lg" aria-label="Sair da mesa">←</button>
+            {me && <TokenAvatar artKey={artKeyFor(me)} color={me.color} size={34} title={me.emblem} />}
             {me ? (
               <div className="grid flex-1 grid-cols-2 gap-2">
                 <Bar label={`❤️ ${me.name}`} value={me.hp as number} max={me.maxHp as number} color="bg-rose-500" />

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Auth, AuthScreen, Button, Card, Spinner, Toaster, useHashRoute, useSession } from '@mesa/common';
+import { Auth, AuthScreen, Button, Card, PromoteMaster, Spinner, Toaster, useHashRoute, useSession } from '@mesa/common';
 import { CampaignList } from './screens/CampaignList';
 import { MasterHUD } from './screens/MasterHUD';
 
@@ -20,9 +20,12 @@ export function App() {
         <Card className="max-w-md text-center">
           <p className="text-4xl">🛡️</p>
           <p className="mt-2 text-lg">Esta conta é de <strong>Jogador</strong>.</p>
-          <p className="mt-1 text-sm text-slate-300">O painel do Mestre é exclusivo do Host. Use o endereço sem <code>/host</code> para jogar.</p>
+          <p className="mt-1 text-sm text-slate-300">Para mestrar uma aventura com esta mesma conta, digite o código de Mestre. Você continua podendo jogar nas mesas dos outros.</p>
+          <div className="mt-4">
+            <PromoteMaster />
+          </div>
           <div className="mt-4 flex justify-center gap-2">
-            <Button onClick={() => (window.location.href = '/')}>Ir para o cliente do Jogador</Button>
+            <Button variant="ghost" onClick={() => (window.location.href = '/')}>Só quero jogar</Button>
             <Button variant="ghost" onClick={() => void Auth.logout()}>Sair</Button>
           </div>
         </Card>

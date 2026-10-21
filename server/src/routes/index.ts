@@ -2,13 +2,18 @@ import { Router } from 'express';
 import { AuthController } from '../controllers/authController';
 import { CampaignController, HostController } from '../controllers/campaignController';
 import { CharacterController, RulesController } from '../controllers/characterController';
+import { sequelize } from '../config/database';
 import { rateLimit, requireAuth, requireRole } from '../middlewares/auth';
 
 export function buildRoutes(opts: { authRateLimit?: boolean } = {}) {
   const r = Router();
   const authLimit = opts.authRateLimit === false ? [] : [rateLimit({ windowMs: 60_000, max: 20 })];
 
-  r.get('/health', (_req, res) => res.json({ status: 'ok', service: 'mesa-rpg', time: new Date().toISOString() }));
+  r.get('/health', async (_req, res) => {
+    // Diagnóstico rápido: o banco está respondendo?
+    const db = await sequelize.query('SELECT 1').then(() => 'ok', (e: Error) => `erro: ${e.message}`);
+    res.status(db === 'ok' ? 200 : 503).json({ status: db === 'ok' ? 'ok' : 'degradado', database: db, service: 'mesa-rpg', time: new Date().toISOString() });
+  });
   r.get('/rules', RulesController.catalog);
   r.get('/rules/maps/:key', RulesController.presetMap);
 
@@ -16,6 +21,7 @@ export function buildRoutes(opts: { authRateLimit?: boolean } = {}) {
   r.post('/auth/register', ...authLimit, AuthController.register);
   r.post('/auth/login', ...authLimit, AuthController.login);
   r.post('/auth/refresh', AuthController.refresh);
+  r.post('/auth/promote', requireAuth, ...authLimit, AuthController.promote);
   r.post('/auth/logout', AuthController.logout);
   r.post('/auth/logout-all', requireAuth, AuthController.logoutEverywhere);
   r.get('/auth/me', requireAuth, AuthController.me);

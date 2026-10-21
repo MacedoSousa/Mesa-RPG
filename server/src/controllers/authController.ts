@@ -34,6 +34,10 @@ export const AuthController = {
     respond(req, res, 200, await AuthService.refresh(token));
   },
 
+  async promote(req: Request, res: Response) {
+    respond(req, res, 200, await AuthService.promote(req.actor!.userId, req.body));
+  },
+
   async logout(req: Request, res: Response) {
     res.clearCookie(REFRESH_COOKIE, { ...cookieOptions(req), maxAge: undefined });
     res.status(204).send();

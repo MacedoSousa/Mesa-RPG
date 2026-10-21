@@ -3,7 +3,7 @@ import {
   DAMAGE_TYPES, MONSTERS, OBJECTS, SURFACES, TERRAIN, type DamageType, type Element, type MapState, type ObjectType, type ProjectedState,
   type SurfaceType, type TerrainType,
 } from '@mesa/shared';
-import { Badge, Button, Field, Select, api, cx, errorMessage, toast, useTable } from '@mesa/common';
+import { Badge, Button, Field, Select, api, cx, errorMessage, toast, useTable, TokenAvatar } from '@mesa/common';
 import type { Tool } from '../tools';
 
 const hex = (n: number) => `#${n.toString(16).padStart(6, '0')}`;
@@ -19,6 +19,7 @@ export function MonstersPanel({ tool, setTool }: { tool: Tool; setTool: (t: Tool
       {Object.values(MONSTERS).map((m) => (
         <button key={m.key} onClick={() => setTool({ kind: 'spawn', monsterKey: m.key, hidden })} className={cx('w-full rounded-lg border p-2 text-left text-sm', active === m.key ? 'border-rose-400 bg-rose-500/15' : 'border-white/10 bg-white/5 hover:bg-white/10')}>
           <div className="flex items-center gap-2">
+            <TokenAvatar artKey={`monstro:${m.key}`} color="#7f1d1d" size={30} />
             <span className="flex-1 font-semibold">{m.label}</span>
             <Badge>ND {m.cr}</Badge>
             <Badge color="sky">CA {m.ac}</Badge>

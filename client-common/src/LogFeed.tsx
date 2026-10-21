@@ -14,10 +14,15 @@ const TYPE_STYLE: Record<string, string> = {
 };
 
 export function LogFeed({ entries, className, onLoadMore }: { entries: LogEntry[]; className?: string; onLoadMore?: () => void }) {
-  const end = useRef<HTMLDivElement>(null);
-  useEffect(() => end.current?.scrollIntoView({ block: 'end' }), [entries.length]);
+  const box = useRef<HTMLDivElement>(null);
+  // Atenção: o corpo do efeito precisa ser um bloco { }. Navegadores recentes fazem scrollIntoView
+  // devolver uma Promise, e o React trataria esse retorno como função de limpeza (tela quebrava a cada ação).
+  useEffect(() => {
+    const el = box.current;
+    if (el) el.scrollTop = el.scrollHeight; // rola só a caixa do registro, sem mexer na página
+  }, [entries.length]);
   return (
-    <div className={cx('space-y-1 overflow-y-auto pr-1 text-sm', className)}>
+    <div ref={box} className={cx('space-y-1 overflow-y-auto pr-1 text-sm', className)}>
       {onLoadMore && (
         <button onClick={onLoadMore} className="w-full rounded bg-white/5 py-1 text-xs text-slate-300 hover:bg-white/10">Carregar histórico anterior</button>
       )}
@@ -27,7 +32,6 @@ export function LogFeed({ entries, className, onLoadMore }: { entries: LogEntry[
           {e.text}
         </div>
       ))}
-      <div ref={end} />
     </div>
   );
 }
