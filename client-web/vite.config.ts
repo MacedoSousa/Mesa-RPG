@@ -13,6 +13,8 @@ export default defineConfig({
     alias: {
       '@mesa/shared': r('../shared/src/index.ts'),
       '@mesa/common': r('../client-common/src/index.ts'),
+      // Código 3D (three.js) só é carregado quando a tela precisa
+      '@mesa/3d': r('../client-common/src/hero3d'),
     },
   },
   server: {

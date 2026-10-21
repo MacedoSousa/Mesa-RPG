@@ -8,11 +8,15 @@ const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 // HUD do Mestre: servido em "/host" pelo Host. Em dev, o Vite faz proxy da API e do WebSocket.
 export default defineConfig({
   base: '/host/',
+  // Modelos 3D compartilhados com o cliente do jogador
+  publicDir: r('../client-web/public'),
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
       '@mesa/shared': r('../shared/src/index.ts'),
       '@mesa/common': r('../client-common/src/index.ts'),
+      // Código 3D (three.js) só é carregado quando a tela precisa
+      '@mesa/3d': r('../client-common/src/hero3d'),
     },
   },
   server: {

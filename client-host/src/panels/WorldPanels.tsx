@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import {
   DAMAGE_TYPES, MAP_KINDS, MAP_KIND_KEYS, MONSTERS, OBJECTS, SURFACES, TERRAIN, type DamageType, type Element, type MapKind, type MapState, type ObjectType, type ProjectedState,
   type SurfaceType, type TerrainType,
 } from '@mesa/shared';
-import { Badge, Button, Field, Select, api, cx, errorMessage, toast, useTable, TokenAvatar } from '@mesa/common';
+import { Badge, Button, Field, Modal, Select, api, cx, errorMessage, toast, useTable, TokenAvatar } from '@mesa/common';
+
+const HeroViewer = lazy(() => import('@mesa/3d/HeroViewer'));
 import type { Tool } from '../tools';
 
 const hex = (n: number) => `#${n.toString(16).padStart(6, '0')}`;
@@ -11,6 +13,7 @@ const hex = (n: number) => `#${n.toString(16).padStart(6, '0')}`;
 /** Injeção de monstros em tempo real. */
 export function MonstersPanel({ tool, setTool }: { tool: Tool; setTool: (t: Tool) => void }) {
   const [hidden, setHidden] = useState(false);
+  const [view, setView] = useState<string | null>(null);
   const active = tool.kind === 'spawn' ? tool.monsterKey : null;
   return (
     <div className="space-y-2">
@@ -24,10 +27,22 @@ export function MonstersPanel({ tool, setTool }: { tool: Tool; setTool: (t: Tool
             <Badge>ND {m.cr}</Badge>
             <Badge color="sky">CA {m.ac}</Badge>
             <Badge color="rose">PV {m.hp}</Badge>
+            <span role="button" tabIndex={0} title="Ver em 3D" onClick={(e) => { e.stopPropagation(); setView(m.key); }} className="rounded-md bg-white/10 px-1.5 py-0.5 text-xs hover:bg-white/20">👁️ 3D</span>
           </div>
           <p className="text-xs text-slate-400">{m.attacks.map((a) => `${a.name} +${a.toHit} (${a.damage})`).join(' · ')}</p>
         </button>
       ))}
+      <Modal open={!!view} onClose={() => setView(null)} title={`👁️ ${view ? MONSTERS[view]?.label : ''}`}>
+        {view && (
+          <>
+            <Suspense fallback={<div className="flex h-[420px] items-center justify-center text-sm text-amber-200">Preparando o bestiário…</div>}>
+              <HeroViewer monster={view} className="h-[420px]" />
+            </Suspense>
+            <p className="mt-2 text-sm text-slate-300">{MONSTERS[view]?.description}</p>
+            <Button className="mt-2 w-full" variant="gold" onClick={() => { setTool({ kind: 'spawn', monsterKey: view, hidden }); setView(null); }}>👹 Invocar no mapa</Button>
+          </>
+        )}
+      </Modal>
     </div>
   );
 }

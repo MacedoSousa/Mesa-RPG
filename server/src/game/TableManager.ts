@@ -138,7 +138,7 @@ export class TableManager {
         initiativeBonus: fresh.initiativeBonus, abilityMods: fresh.abilityMods, proficiency: fresh.proficiency,
         attacks: fresh.attacks, resistances: fresh.resistances, conditionAdvantage: fresh.conditionAdvantage, power: fresh.power,
         consumables: fresh.consumables, hidden: false, portrait: fresh.portrait, emblem: fresh.emblem,
-        skills: fresh.skills, saves: fresh.saves, level: fresh.level, face: fresh.face,
+        skills: fresh.skills, saves: fresh.saves, level: fresh.level, face: fresh.face, look3d: fresh.look3d,
       });
       // Subiu de nível: ganha a diferença de PV/Estamina
       if (fresh.maxHp > previousMax) existing.hp += fresh.maxHp - previousMax;

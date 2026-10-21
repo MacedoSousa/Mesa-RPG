@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import {
-  ABILITIES, ABILITY_LABELS, ITEMS, LOOT_TABLES, SKILLS, checkLabel, xpForNextLevel,
+  ABILITIES, ABILITY_LABELS, AFFIXES, ITEMS, LOOT_TABLES, RANKS, SKILLS, affixFits, checkLabel, getItem, rankedKey, xpForNextLevel,
   type CheckKind, type LootEntry, type LootTier, type ProjectedState, type Token,
 } from '@mesa/shared';
-import { Badge, Button, Card, Field, Select, cx, useTable } from '@mesa/common';
+import { Badge, Button, Card, Field, ItemName, Select, cx, useTable } from '@mesa/common';
 import type { Tool } from '../tools';
 
 /** Painel do Mestre: pedir testes, dar recompensas e esconder baús. */
@@ -13,7 +13,8 @@ export function TablePanel({ state, selectedId, setTool }: { state: ProjectedSta
       <RestCard />
       <ChecksCard state={state} />
       <RewardCard state={state} selectedId={selectedId} />
-      <ChestCard setTool={setTool} />
+      <ForgeCard state={state} selectedId={selectedId} setTool={setTool} />
+      <ChestCard state={state} setTool={setTool} />
     </div>
   );
 }
@@ -158,7 +159,7 @@ function RewardCard({ state, selectedId }: { state: ProjectedState; selectedId: 
       {items.length > 0 && (
         <div className="mt-1 flex flex-wrap gap-1">
           {items.map((i, idx) => (
-            <button key={idx} onClick={() => setItems(items.filter((_, j) => j !== idx))} className="rounded-full bg-white/10 px-2 py-0.5 text-[11px]">{i.quantity}× {ITEMS[i.itemKey]?.name} ✕</button>
+            <button key={idx} onClick={() => setItems(items.filter((_, j) => j !== idx))} className="rounded-full bg-white/10 px-2 py-0.5 text-[11px]">{i.quantity}× {getItem(i.itemKey)?.name} ✕</button>
           ))}
         </div>
       )}
@@ -180,7 +181,9 @@ function RewardCard({ state, selectedId }: { state: ProjectedState; selectedId: 
   );
 }
 
-function ChestCard({ setTool }: { setTool: (t: Tool) => void }) {
+function ChestCard({ state, setTool }: { state: ProjectedState; setTool: (t: Tool) => void }) {
+  const send = useTable((s) => s.send);
+  const lootOn = (state as { options?: { monsterLoot?: boolean } }).options?.monsterLoot !== false;
   const [mode, setMode] = useState<'tabela' | 'manual'>('tabela');
   const [tier, setTier] = useState<LootTier>('comum');
   const [lock, setLock] = useState('');
@@ -204,7 +207,7 @@ function ChestCard({ setTool }: { setTool: (t: Tool) => void }) {
           </div>
           <div className="mt-1 flex flex-wrap gap-1">
             {items.map((i, idx) => (
-              <button key={idx} onClick={() => setItems(items.filter((_, j) => j !== idx))} className="rounded-full bg-white/10 px-2 py-0.5 text-[11px]">{i.quantity}× {ITEMS[i.itemKey]?.name} ✕</button>
+              <button key={idx} onClick={() => setItems(items.filter((_, j) => j !== idx))} className="rounded-full bg-white/10 px-2 py-0.5 text-[11px]">{i.quantity}× {getItem(i.itemKey)?.name} ✕</button>
             ))}
           </div>
           <Field className="mt-2" label="Dracmas" type="number" value={dracmas} onChange={(e) => setDracmas(e.target.value)} />
@@ -224,6 +227,10 @@ function ChestCard({ setTool }: { setTool: (t: Tool) => void }) {
       >
         🧰 Clicar no mapa para colocar o baú
       </Button>
+      <label className="mt-3 flex items-center gap-2 border-t border-white/10 pt-2 text-sm">
+        <input type="checkbox" checked={lootOn} onChange={(e) => void send({ type: 'table.options', monsterLoot: e.target.checked })} />
+        💰 Monstros derrotados deixam espólio (chance maior nos fortes)
+      </label>
     </Card>
   );
 }
@@ -242,5 +249,54 @@ function TakeItem({ targets }: { targets: string[] | 'todos' }) {
         <Button size="sm" variant="danger" onClick={() => void send({ type: 'item.take', tokenIds: targets, itemKey, quantity: Math.max(1, Number(qty) || 1), reason: 'Cobrança' })}>Cobrar</Button>
       </div>
     </div>
+  );
+}
+
+/** Forja de Hefesto: o Mestre cria uma arma/armadura com rank e encantamento. */
+function ForgeCard({ state, selectedId, setTool }: { state: ProjectedState; selectedId: string | null; setTool: (t: Tool) => void }) {
+  const send = useTable((s) => s.send);
+  const heroes = state.tokens.filter((t) => t.kind === 'personagem' && t.characterId && !t.dead) as Token[];
+  const selectedHero = heroes.find((h) => h.id === selectedId);
+  const gear = Object.values(ITEMS).filter((i) => i.kind === 'arma' || i.kind === 'armadura' || i.kind === 'escudo');
+  const [base, setBase] = useState('espada_longa');
+  const [rank, setRank] = useState(1);
+  const [affix, setAffix] = useState('');
+  const [cost, setCost] = useState('0');
+  const baseItem = ITEMS[base];
+  const affixes = baseItem ? Object.values(AFFIXES).filter((a) => affixFits(a, baseItem)) : [];
+  const validAffix = affixes.some((a) => a.key === affix) ? affix : '';
+  const key = rankedKey(base, rank, validAffix || null);
+  const item = getItem(key);
+
+  function give() {
+    if (!selectedHero) return;
+    void send({ type: 'reward.grant', tokenIds: [selectedHero.id], xp: 0, dracmas: 0, items: [{ itemKey: key, quantity: 1 }], reason: 'Forja de Hefesto' });
+    const price = Math.max(0, Number(cost) || 0);
+    if (price) void send({ type: 'item.take', tokenIds: [selectedHero.id], itemKey: 'dracmas', quantity: price, reason: 'Forja de Hefesto' });
+  }
+
+  return (
+    <Card title="🔨 Forja de Hefesto (ranks e encantamentos)">
+      <p className="mb-2 text-xs text-slate-400">
+        Crie uma arma ou armadura melhor para dar de recompensa, vender na loja ou esconder num baú. Ranks: {RANKS.slice(1).map((r) => <span key={r.rank} style={{ color: r.color }}>{r.label} +{r.bonus} (nível {r.minLevel}) </span>)}
+      </p>
+      <Select label="Item base" value={base} onChange={setBase} options={gear.map((i) => ({ value: i.key, label: i.name }))} />
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <Select label="Rank" value={String(rank)} onChange={(v) => setRank(Number(v))} options={RANKS.map((r) => ({ value: String(r.rank), label: `${r.label}${r.bonus ? ` +${r.bonus}` : ''}` }))} />
+        <Select label="Encantamento" value={validAffix} onChange={setAffix} options={[{ value: '', label: '— nenhum —' }, ...affixes.map((a) => ({ value: a.key, label: a.label }))]} />
+      </div>
+      {item && (
+        <div className="mt-2 rounded-lg bg-white/5 p-2 text-sm">
+          <ItemName item={item} />
+          <p className="text-xs text-slate-400">{item.description}</p>
+          <p className="mt-1 text-[11px] text-slate-400">Valor sugerido: {item.value} dracmas · exige nível {item.minLevel ?? 1}</p>
+        </div>
+      )}
+      <Field className="mt-2" label="Cobrar dracmas do herói (0 = presente)" type="number" value={cost} onChange={(e) => setCost(e.target.value)} />
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <Button variant="gold" disabled={!item || !selectedHero} onClick={give}>{selectedHero ? `🎁 Dar a ${selectedHero.name}` : 'Selecione um herói'}</Button>
+        <Button variant="subtle" disabled={!item} onClick={() => setTool({ kind: 'chest', loot: [{ itemKey: key, quantity: 1 }], dracmas: 0, lockDc: null })}>🧰 Pôr num baú</Button>
+      </div>
+    </Card>
   );
 }

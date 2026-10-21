@@ -209,6 +209,7 @@ export function resolveAttackRoll(ctx: EngineContext, attacker: Token, target: T
   const hg = highGroundBonus(ctx, attacker, target);
   const r = roll(d20Formula(attack.toHit + hg, adv), ctx.rng);
   const autoCrit = hasCondition(target, 'inconsciente') && dist <= 1;
+  ctx.emit({ type: 'ataque', tokenId: attacker.id, targetId: target.id });
   const hit = r.critical || autoCrit || (!r.fumble && r.total >= target.ac);
   const critical = hit && (r.critical || autoCrit);
 

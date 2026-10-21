@@ -11,3 +11,4 @@ export * from './TokenAvatar';
 export * from './mapRender';
 export * from './portrait';
 export * from './PortraitEditor';
+export * from './gearUi';

@@ -92,10 +92,12 @@ export const OBJECTS: Record<ObjectType, ObjectDef> = {
   // Baús não quebram: o tesouro só sai abrindo (ação "Abrir baú" ao lado dele)
   bau: { label: 'Baú de Tesouro', color: 0x9a6b2f, maxHp: 999, blocksMovement: true, blocksSight: false },
   bau_aberto: { label: 'Baú Aberto', color: 0x5b4220, maxHp: 999, blocksMovement: true, blocksSight: false },
+  // Espólio que um monstro derrotado deixa cair (some ao ser recolhido)
+  espolio: { label: 'Espólio', color: 0x8a6a3a, maxHp: 999, blocksMovement: false, blocksSight: false },
 };
 
 export function isChest(type: ObjectType | undefined): boolean {
-  return type === 'bau' || type === 'bau_aberto';
+  return type === 'bau' || type === 'bau_aberto' || type === 'espolio';
 }
 
 // ───────────────────────────── Acesso ao grid ─────────────────────────────

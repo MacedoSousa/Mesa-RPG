@@ -2,7 +2,8 @@
 // KayKit Adventurers (CC0, Kay Lousberg — https://kaylousberg.com).
 //
 // Uso:  git clone --depth 1 https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0.git /tmp/kk
-//       node client-web/tools/build-models.mjs /tmp/kk/addons/kaykit_character_pack_adventures
+//       git clone --depth 1 https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Skeletons-1.0.git /tmp/sk
+//       node client-web/tools/build-models.mjs /tmp/kk/addons/kaykit_character_pack_adventures /tmp/sk/addons/kaykit_character_pack_skeletons
 //
 // Saída (client-web/public/models):
 //   anims.glb          esqueleto + só as animações que o jogo usa (compartilhadas por todos os corpos)
@@ -53,6 +54,19 @@ for (const b of BODIES) {
   for (const n of root.listNodes()) if (n.getMesh() && HAND_ITEMS.test(n.getName())) n.dispose();
   await doc.transform(dedup(), prune({ keepLeaves: true }));
   await io.write(join(out, `${b.toLowerCase()}.glb`), doc);
+}
+
+// 2b) Esqueletos (mesmo esqueleto de ossos: usam as mesmas animações).
+const skeletons = process.argv[3];
+if (skeletons) {
+  for (const b of ['Skeleton_Warrior', 'Skeleton_Mage', 'Skeleton_Rogue', 'Skeleton_Minion']) {
+    const doc = await io.read(join(skeletons, `Characters/gltf/${b}.glb`));
+    const root = doc.getRoot();
+    for (const a of root.listAnimations()) dropAnim(a);
+    for (const n of root.listNodes()) if (n.getMesh() && HAND_ITEMS.test(n.getName())) n.dispose();
+    await doc.transform(dedup(), prune({ keepLeaves: true }));
+    await io.write(join(out, `${b.toLowerCase()}.glb`), doc);
+  }
 }
 
 // 3) Armas avulsas.

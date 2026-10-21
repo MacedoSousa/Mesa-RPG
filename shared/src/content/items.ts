@@ -1,5 +1,6 @@
 import type { Ability } from '../rules/abilities';
 import type { ArmorCategory, WeaponCategory } from './classes';
+import { deriveRankedItem, parseItemKey } from './gear';
 
 export const DAMAGE_TYPES = [
   'cortante', 'perfurante', 'concussao', 'fogo', 'frio', 'eletrico', 'trovao', 'acido', 'veneno', 'necrotico', 'radiante', 'psiquico', 'energia',
@@ -29,6 +30,18 @@ interface BaseItem {
   value: number; // dracmas
   requirements?: ItemRequirements;
   rarity?: 'comum' | 'incomum' | 'raro' | 'lendario';
+  // ───── Ranks e encantamentos (ver gear.ts) ─────
+  /** Chave do item base quando este é uma versão melhorada. */
+  baseKey?: string;
+  /** 0 = Comum … 4 = Divino. */
+  rank?: number;
+  affix?: string;
+  /** Nível mínimo do personagem para equipar. */
+  minLevel?: number;
+  /** Atributos que o item soma enquanto equipado. */
+  abilityBonuses?: Partial<Record<Ability, number>>;
+  resistances?: DamageType[];
+  speedPenalty?: number;
 }
 
 export interface WeaponItem extends BaseItem {
@@ -45,6 +58,11 @@ export interface WeaponItem extends BaseItem {
   /** Dano extra contra monstros (ex.: bronze celestial). */
   bonusVsMonsters?: string;
   attackBonus?: number;
+  /** Dano fixo extra (além do attackBonus). */
+  damageBonus?: number;
+  /** Dados extras de um elemento (ex.: "1d4" de fogo). */
+  extraDamage?: string;
+  extraDamageType?: DamageType;
 }
 
 export interface ArmorItem extends BaseItem {
@@ -162,8 +180,31 @@ export const ITEMS: Record<string, ItemDef> = Object.fromEntries(
   ] as ItemDef[]).map((i) => [i.key, i]),
 );
 
+const rankedCache = new Map<string, ItemDef | null>();
+
+/**
+ * Resolve um item pela chave, incluindo versões com rank/encantamento
+ * ("espada_longa+2~de_fogo") de itens do catálogo ou personalizados.
+ */
 export function getItem(key: string, custom?: Record<string, ItemDef>): ItemDef | undefined {
-  return custom?.[key] ?? ITEMS[key];
+  const direct = custom?.[key] ?? ITEMS[key];
+  if (direct) return direct;
+  if (!key || (!key.includes('+') && !key.includes('~'))) return undefined;
+  const fromCustom = !!custom && !!parseItemKey(key) && !!custom[parseItemKey(key)!.base];
+  if (!fromCustom && rankedCache.has(key)) return rankedCache.get(key) ?? undefined;
+  const p = parseItemKey(key);
+  const base = p ? custom?.[p.base] ?? ITEMS[p.base] : undefined;
+  const item = p && base && (p.rank > 0 || p.affix) ? deriveRankedItem(base, key, p.rank, p.affix) : undefined;
+  if (!fromCustom) {
+    if (rankedCache.size > 2000) rankedCache.clear();
+    rankedCache.set(key, item ?? null);
+  }
+  return item;
+}
+
+/** Chave do item base (sem rank/encantamento). */
+export function baseItemKey(key: string): string {
+  return parseItemKey(key)?.base ?? key;
 }
 
 export function isWeapon(i: ItemDef | undefined): i is WeaponItem {

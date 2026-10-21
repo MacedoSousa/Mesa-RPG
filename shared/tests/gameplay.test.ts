@@ -152,7 +152,7 @@ describe('Baús de tesouro', () => {
   it('baú longe não abre; trancado exige teste; tabela sorteia conteúdo', () => {
     let s = withTokens(baseState(), heroToken('c1', PLAYER.userId, 1, 1));
     s = applyCommand(s, MASTER, { type: 'chest.place', x: 5, y: 5, loot: [], dracmas: 0, tier: 'raro' }, seededRng(3)).state;
-    expect(tileAt(s.map, 5, 5)!.o!.loot!.length).toBe(3);
+    expect(tileAt(s.map, 5, 5)!.o!.loot!.length).toBe(4); // 3 itens da tabela + 1 arma/armadura com rank
     expect(() => applyCommand(s, PLAYER, { type: 'object.open', tokenId: 'tok_c1', x: 5, y: 5 })).toThrow(/ao lado/);
     s = applyCommand(s, MASTER, { type: 'chest.place', x: 2, y: 2, loot: [{ itemKey: 'tocha', quantity: 1 }], dracmas: 0, lockDc: 30 }).state;
     const fail = applyCommand(s, PLAYER, { type: 'object.open', tokenId: 'tok_c1', x: 2, y: 2 }, fixedRng([5])).state;

@@ -13,7 +13,7 @@ Raças, divindades, itens míticos e as estatísticas dos monstros são conteúd
 
 ## Modelos 3D
 
-Os bonecos 3D do criador de personagem e as armas vêm do **KayKit Adventurers Character Pack 1.0**, de Kay Lousberg (https://kaylousberg.com), licenciado em **CC0 1.0** (domínio público). Arquivos em `client-web/public/models/`, convertidos por `client-web/tools/build-models.mjs`: animações separadas, armas avulsas e cores trocadas em tempo real. Arcos, lanças, tridentes, martelos, liras e adornos (chifres, louros, olho de ciclope) são gerados por código.
+Os bonecos 3D (criador de personagem, bestiário e mapa) e as armas vêm do **KayKit Adventurers Character Pack 1.0** e do **KayKit Skeletons Character Pack 1.0**, de Kay Lousberg (https://kaylousberg.com), licenciados em **CC0 1.0** (domínio público). Arquivos em `client-web/public/models/`, convertidos por `client-web/tools/build-models.mjs`: animações separadas, armas avulsas e cores trocadas em tempo real. Arcos, lanças, tridentes, martelos, liras, adornos (chifres, louros, olho de ciclope, asas, caudas, serpentes) e as feras (cães, Cérbero, Quimera, Hidra, Aranha, Telquine) são gerados por código.
 
 ## Arte gerada por IA
 

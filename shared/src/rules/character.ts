@@ -5,6 +5,7 @@ import {
   ArmorItem, DamageType, ItemDef, WeaponItem, getItem, isArmor, isShield, isWeapon,
 } from '../content/items';
 import { RACE_KEYS, RaceDef, getRace } from '../content/races';
+import { rankOf } from '../content/gear';
 import {
   ABILITIES, ABILITY_CAP, ABILITY_LABELS, Ability, AbilityScores, SKILLS, SKILL_KEYS, Skill,
   abilityModifier, proficiencyBonus, validatePointBuy,
@@ -116,14 +117,22 @@ export function calculateArmorClass(equipment: Equipment, dexMod: number, bonus 
   return ac + bonus;
 }
 
+/** Itens equipados (resolvidos), para bônus de atributos, resistências e deslocamento. */
+function equippedItems(equipment: Equipment, custom?: Record<string, ItemDef>): ItemDef[] {
+  return EQUIPMENT_SLOTS.map((s) => equipment[s]).filter((k): k is string => !!k).map((k) => getItem(k, custom)).filter((i): i is ItemDef => !!i);
+}
+
 export function deriveStats(build: CharacterBuild, custom?: Record<string, ItemDef>): DerivedStats {
   const { race, divinity, cls } = defs(build);
+  const gear = equippedItems(build.equipment, custom);
   const abilities = finalAbilities(build.baseAbilities, race, divinity);
+  // Encantamentos podem passar do limite normal em até +2 (como itens mágicos)
+  for (const it of gear) for (const [a, v] of Object.entries(it.abilityBonuses ?? {})) abilities[a as Ability] = Math.min(ABILITY_CAP + 2, abilities[a as Ability] + (v ?? 0));
   const modifiers = Object.fromEntries(ABILITIES.map((a) => [a, abilityModifier(abilities[a])])) as AbilityScores;
   const r = race.mechanics;
   const d = divinity.blessing.mechanics;
   const sum = (k: 'hpBonusPerLevel' | 'acBonus' | 'speedBonus' | 'initiativeBonus' | 'staminaBonus') => (r[k] ?? 0) + (d[k] ?? 0);
-  const speed = race.speed + sum('speedBonus');
+  const speed = Math.max(SQUARE_METERS, race.speed + sum('speedBonus') - gear.reduce((t, i) => t + (i.speedPenalty ?? 0), 0));
 
   return {
     abilities,
@@ -136,7 +145,7 @@ export function deriveStats(build: CharacterBuild, custom?: Record<string, ItemD
     speedSquares: Math.floor(speed / SQUARE_METERS),
     initiativeBonus: modifiers.destreza + sum('initiativeBonus'),
     darkvision: Math.max(r.darkvision ?? 0, d.darkvision ?? 0),
-    resistances: [...new Set([...(r.resistances ?? []), ...(d.resistances ?? [])])],
+    resistances: [...new Set([...(r.resistances ?? []), ...(d.resistances ?? []), ...gear.flatMap((i) => i.resistances ?? [])])],
     skillProficiencies: [...new Set([...build.skills, ...(r.skillProficiencies ?? []), ...(d.skillProficiencies ?? [])])],
     weaponProficiencies: [...new Set([...cls.weaponProficiencies, ...(r.weaponProficiencies ?? []), ...(d.weaponProficiencies ?? [])])],
     conditionAdvantage: [...new Set([...(r.conditionAdvantage ?? []), ...(d.conditionAdvantage ?? [])])],
@@ -174,8 +183,9 @@ export function canUseItem(build: CharacterBuild, item: ItemDef, custom?: Record
   if (req?.races?.length && !req.races.includes(build.race)) reasons.push(`Restrito às raças: ${req.races.map((k) => getRace(k)?.label ?? k).join(', ')}`);
   if (req?.forbiddenRaces?.includes(build.race)) reasons.push(`${race.label} não pode usar este item`);
 
+  if (item.minLevel && build.level < item.minLevel) reasons.push(`Requer nível ${item.minLevel} (rank ${rankOf(item).label})`);
   if (isWeapon(item)) {
-    const proficient = cls.weaponCategoryProficiencies.includes(item.category) || stats.weaponProficiencies.includes(item.key);
+    const proficient = cls.weaponCategoryProficiencies.includes(item.category) || stats.weaponProficiencies.includes(item.baseKey ?? item.key);
     if (!proficient) reasons.push(`${cls.label} não tem proficiência com ${item.name} (arma ${item.category})`);
   }
   if (isArmor(item) || isShield(item)) {
@@ -228,7 +238,7 @@ export function validateEquipment(build: CharacterBuild, custom?: Record<string,
     if (eq.shield) out.push({ slot: 'shield', itemKey: eq.shield, reason: 'Não dá para usar escudo com arma de duas mãos' });
   }
   if (isWeapon(off)) {
-    if (!off.properties.includes('leve')) out.push({ slot: 'offHand', itemKey: off.key, reason: 'A arma da mão secundária precisa ser leve' });
+    if (!off.properties.includes('leve')) out.push({ slot: 'offHand', itemKey: eq.offHand!, reason: 'A arma da mão secundária precisa ser leve' });
     if (eq.shield) out.push({ slot: 'shield', itemKey: eq.shield, reason: 'Escudo e arma na mão secundária ao mesmo tempo' });
   }
   return out;

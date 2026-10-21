@@ -281,7 +281,7 @@ Fórmulas `NdX±M` combináveis (`1d8+1d6+2`), `kh`/`kl` (vantagem `2d20kh1`), e
 - **Capítulos/fases:** criar, editar, ativar e excluir.
 - **Side quests temporárias:** progresso (ex.: 0/3) e expiração por rodada de combate ou contagem regressiva em segundos.
   - Ao expirar, um **gatilho** pode mostrar uma mensagem ou invocar um monstro.
-- **Mapa e monstros:** bestiário mitológico (18 monstros) injetável em tempo real, inclusive oculto. O editor de mapa pinta terreno, objetos e superfícies.
+- **Mapa e monstros:** bestiário mitológico (18 monstros, cada um com boneco 3D) injetável em tempo real, inclusive oculto. O editor de mapa pinta terreno, objetos e superfícies.
 - **Controle da mesa:** pausar a mesa ou um jogador, banir, ajustar PV e condições, ajustar afinidade divina.
 - **Save/Load** e histórico.
 - **Aventura pronta:** *O Ladrão de Raios* (adaptação livre, 6 capítulos, quests principais e secundárias com XP), carregada com um clique em **📖 Fases → Aventuras prontas**. O roteiro do narrador está em [`docs/campanha/O_LADRAO_DE_RAIOS.md`](docs/campanha/O_LADRAO_DE_RAIOS.md) e o manual do HUD em [`docs/GUIA_MESTRE.md`](docs/GUIA_MESTRE.md).
@@ -309,6 +309,48 @@ Cada herói ganha um retrato gerado (SVG em camadas, por semente): formato do ro
   - three.js, carregado só quando a tela abre.
   - Modelos KayKit (CC0), ~2,8 MB no total, com animações compartilhadas.
   - Funciona no celular; sem WebGL, vale o retrato 2D.
+
+### Ranks de armas e armaduras
+
+- **5 ranks**, com cor e nível mínimo:
+
+  | Rank | Cor | Bônus | Nível mínimo |
+  |---|---|---|---|
+  | Comum | cinza | — | 1 |
+  | Refinado | verde | +1 | 1 |
+  | Heroico | azul | +2 | 3 |
+  | Épico | roxo | +3 | 5 |
+  | Divino | dourado | +4 | 8 |
+
+  O bônus vai no acerto e no dano das armas e na CA das armaduras; escudos ganham no máximo +2.
+- **17 encantamentos:**
+  - Dano elemental extra: *de Fogo*, *de Gelo*, *do Trovão*.
+  - Atributos: *do Titã*, *da Raposa*, *do Oráculo*, *do Vigor*, *do Herói*.
+  - Resistências: *contra Fogo*, *contra Gelo*, *contra Raios*, *contra Veneno*.
+  - Defesa: *do Guardião*, *da Leveza*.
+  - Com preço: *Brutal* (+3 de dano, −1 acerto) e *da Fortaleza* (+2 CA, −1,5 m).
+- **Chave do item:** o rank e o encantamento vão na própria chave (`espada_longa+2~de_fogo`), então inventário, baús e recompensas funcionam sem tabela nova. O motor resolve o item derivado em `getItem`.
+- **Comparação ▲▼ na ficha:** CA, acerto, dano médio, atributos, PV, deslocamento e resistências; as melhorias aparecem primeiro.
+- **Forja de Hefesto:** o Mestre cria e dá itens com rank, cobrando ou não, ou põe num baú.
+- **Loot:** baús sorteados incluem equipamento com rank, e monstros derrotados podem deixar **espólio** (desligável).
+- **Rank no boneco 3D:** armas Heroicas ou melhores brilham na cor do rank.
+
+### Bonecos 3D no mapa e monstros por espécie
+
+- **Bestiário 3D:** cada espécie tem aparência fixa.
+  - Humanoides: rig KayKit (aventureiros e esqueletos, CC0) com cores e adornos procedurais — cabeça de touro, olho de ciclope, presas, cabelo de serpentes ou de chamas, asas de morcego ou de penas, caudas de serpente.
+  - Feras: criaturas procedurais com animação por código (quadrúpedes com 1 a 3 cabeças, hidra de 5 pescoços, aranha mecânica, telquine).
+  - Visualização em **👹 Monstros → 👁️ 3D**.
+- **Bonecos no mapa:** cada figura é pré-renderizada em folhas de sprites, 3 direções (o oeste é espelhado) × parado/andar/atacar/ferido/caído, com câmera ortográfica a 40°.
+  - A montagem é feita no navegador, aos poucos e sem travar a tela, e o contexto WebGL é liberado depois.
+  - Os heróis usam a aparência e o equipamento da ficha.
+- **Animações:**
+  - Andar casa a casa pelo caminho, com poeira.
+  - Investida e golpe: corte, garras ou projétil em arco.
+  - Clarão vermelho e número de dano no impacto; tremor de tela em golpes fortes e explosões.
+  - Pose de queda.
+- **Mapa vivo:** árvores balançando com o vento, sombras de nuvens, folhas, vaga-lumes, poeira, brasas e brilhos conforme o ambiente.
+- **Qualidade:** alta, leve (celular fraco) ou fichas redondas, num botão do mapa.
 
 ### Arte dos monstros com IA local
 
@@ -415,9 +457,9 @@ npm run db:up        # o banco mesa_rpg_test é criado pelo docker compose
 npm test             # motor (shared) + integração (server)
 ```
 
-**125 testes:**
+**136 testes:**
 
-- **Motor e guardas do frontend (`shared/tests`, 82):**
+- **Motor e guardas do frontend (`shared/tests`, 92):**
   - Dados: parser, vantagem, críticos, limites.
   - Point-buy e atributos derivados.
   - Restrições de armas e armaduras por classe, atributo, divindade e raça.
@@ -428,9 +470,10 @@ npm test             # motor (shared) + integração (server)
   - Ataques, empurrar e poder divino.
   - RBAC e informação oculta.
   - Side quests com gatilho e migração de saves.
+  - Ranks e encantamentos (acerto, dano, CA, atributos, resistências, nível mínimo), comparação ▲▼, loot com rank e espólio de monstros.
   - Monstros agindo sozinhos, dano/cura, testes contra a morte, testes pedidos, XP e nível, recompensas de quest, baús e carga de aventura.
   - Guarda de regressão: nenhum `useEffect` dos clientes devolve valor por engano (causa da tela quebrando).
-- **Integração (`server/tests`, 43, com PostgreSQL real):**
+- **Integração (`server/tests`, 44, com PostgreSQL real):**
   - Autenticação: Argon2id, primeiro usuário Mestre, convite, login, refresh por cookie e revogação.
   - Papéis: código de Mestre tolerante a espaços e maiúsculas, conta existente virando Mestre, Mestre jogando na campanha de outro.
   - Criação e edição de fichas via API.

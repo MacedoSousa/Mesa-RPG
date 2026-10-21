@@ -158,6 +158,21 @@ Os jogadores **veem o baú, mas não o conteúdo**, nem a CD.
 - **Elementos e dano ao cenário:** jogue fogo ou raio numa área e destrua paredes e pontes ao vivo.
 - **Salvar mapa:** guarda na campanha para reutilizar.
 
+### Bonecos no mapa e bestiário 3D
+
+- Cada espécie de monstro tem um boneco 3D fixo. Os humanoides (Minotauro, Ciclope, Górgona, Fúria, Dracena, Spartoi, Ares…) usam o esqueleto KayKit com adornos; as feras (Cão do Submundo, Cérbero, Quimera, Hidra, Aranha Autômato, Telquine) são criaturas animadas por código.
+- Na aba **👹 Monstros**, o botão **👁️ 3D** abre o monstro girando, com ataque, ferido, andar e cair.
+- No mapa, heróis e monstros viram bonecos que andam pelo caminho, viram para onde vão, golpeiam (corte, garras ou projétil), piscam ao levar dano e caem. Golpes fortes e explosões tremem a tela.
+- O mapa tem vida própria: árvores balançam com o vento, nuvens fazem sombra de dia, vaga-lumes à noite, brasas no Submundo, poeira na caverna e brilhos no Olimpo.
+- O botão no canto do mapa alterna **alta / leve / fichas**. Na primeira vez, cada boneco leva um instante para ser montado; até lá aparece a ficha redonda.
+
+### Forja, ranks e espólio (🎯 Testes & 🎁)
+
+- **🔨 Forja de Hefesto:** escolha a arma ou armadura base, o rank (Refinado +1 … Divino +4) e um encantamento. Depois **dê ao herói selecionado**, cobrando dracmas se quiser (loja), ou **ponha num baú**.
+- **Ranks exigem nível** (Heroico 3, Épico 5, Divino 8): dá para dar uma espada Épica cedo como "promessa" que o herói só empunha depois.
+- **Baús sorteados** já trazem uma arma ou armadura com rank: 35% de chance na tabela Comum, 75% na Incomum e sempre na Rara.
+- **💰 Espólio dos monstros:** ao morrer, o monstro pode deixar uma sacola (chance maior nos de ND alto). O conteúdo aparece só para você no registro. Desligue na caixa do baú, se preferir controlar tudo.
+
 ### Arte dos monstros (🎨 Arte)
 
 Com o **ComfyUI** aberto no seu PC, a aba **🎨 Arte** pinta cada monstro com IA local.

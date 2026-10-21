@@ -7,12 +7,12 @@ import {
   type ItemDef, type RaceKey, type Skill,
 } from '@mesa/shared';
 import { Badge, Button, Card, Field, PortraitEditor, Term, TextArea, api, cx, errorMessage, navigate, raceFeatureFor, randomPortrait, toast, TokenAvatar, type PortraitSpec } from '@mesa/common';
-import type { HeroViewerHandle } from '../hero3d/HeroViewer';
-import type { HeroAction } from '../hero3d/heroKit';
-import { LookEditor } from '../hero3d/LookEditor';
+import type { HeroViewerHandle } from '@mesa/3d/HeroViewer';
+import type { HeroAction } from '@mesa/3d/heroKit';
+import { LookEditor } from '@mesa/3d/LookEditor';
 import type { CharacterDTO } from '../types';
 
-const HeroViewer = lazy(() => import('../hero3d/HeroViewer'));
+const HeroViewer = lazy(() => import('@mesa/3d/HeroViewer'));
 const STEPS = ['Raça', 'Pai Olímpico', 'Atributos', 'Inventário', 'Aparência'];
 /** Cada atributo ganha uma animação quando você investe nele. */
 const ABILITY_ACTION: Record<string, HeroAction> = {

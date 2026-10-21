@@ -10,7 +10,7 @@ const terrain = z.enum([
   'parede', 'coluna', 'arvore', 'toco', 'escombros', 'ponte', 'portao', 'elevado',
 ]);
 const surface = z.enum(['fogo', 'agua', 'agua_eletrificada', 'gelo', 'oleo', 'veneno', 'vapor']);
-const object = z.enum(['barril_explosivo', 'barril_agua', 'barril_oleo', 'caixote', 'estatua', 'braseiro', 'bau', 'bau_aberto']);
+const object = z.enum(['barril_explosivo', 'barril_agua', 'barril_oleo', 'caixote', 'estatua', 'braseiro', 'bau', 'bau_aberto', 'espolio']);
 const loot = z.array(z.object({ itemKey: z.string().min(1).max(60), quantity: z.number().int().min(1).max(999) })).max(20);
 const checkKind = z.enum(['pericia', 'atributo', 'resistencia']);
 const damageType = z.enum(DAMAGE_TYPES);
@@ -58,6 +58,7 @@ export const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('chat.say'), text: z.string().trim().min(1).max(500) }),
   // ── Somente Mestre ──
   z.object({ type: z.literal('table.setPaused'), paused: z.boolean() }),
+  z.object({ type: z.literal('table.options'), monsterLoot: z.boolean().optional() }),
   z.object({ type: z.literal('chapter.create'), title: z.string().trim().min(1).max(80), description: z.string().max(2000).default('') }),
   z.object({ type: z.literal('chapter.update'), id, title: z.string().trim().min(1).max(80).optional(), description: z.string().max(2000).optional(), status: z.enum(['pendente', 'ativo', 'concluido']).optional() }),
   z.object({ type: z.literal('chapter.delete'), id }),

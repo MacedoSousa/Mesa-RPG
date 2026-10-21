@@ -13,7 +13,7 @@ export type TerrainType =
 
 export type SurfaceType = 'fogo' | 'agua' | 'agua_eletrificada' | 'gelo' | 'oleo' | 'veneno' | 'vapor';
 
-export type ObjectType = 'barril_explosivo' | 'barril_agua' | 'barril_oleo' | 'caixote' | 'estatua' | 'braseiro' | 'bau' | 'bau_aberto';
+export type ObjectType = 'barril_explosivo' | 'barril_agua' | 'barril_oleo' | 'caixote' | 'estatua' | 'braseiro' | 'bau' | 'bau_aberto' | 'espolio';
 
 export interface Surface {
   type: SurfaceType;
@@ -105,6 +105,8 @@ export interface Token {
   deathSaves?: { successes: number; failures: number; stable: boolean };
   /** Retrato gerado (PortraitSpec serializada) para desenhar o rosto do herói. */
   face?: unknown;
+  /** Dados para montar o boneco 3D do herói no mapa (classe, raça, deus e equipamento). */
+  look3d?: { classKey: string; race: string; divinity: string; equipment: Partial<Record<'mainHand' | 'offHand' | 'armor' | 'shield', string | null>>; inventory?: string[] };
 }
 
 export interface Economy {
@@ -217,6 +219,8 @@ export interface TableState {
   players: Record<string, PlayerInfo>;
   /** Testes pedidos pelo Mestre (pendentes e resultados recentes). */
   checks?: PendingCheck[];
+  /** Opções da mesa definidas pelo Mestre. */
+  options?: { monsterLoot?: boolean };
   log: LogEntry[];
   /** Incrementa a cada comando aplicado (ordem/ressincronização). */
   seq: number;
@@ -232,6 +236,7 @@ export type Fx =
   | { type: 'dano'; tokenId: string; amount: number; damageType: DamageType }
   | { type: 'cura'; tokenId: string; amount: number }
   | { type: 'errou'; tokenId: string }
+  | { type: 'ataque'; tokenId: string; targetId: string }
   | { type: 'dado'; total: number; formula: string; visibility: Visibility }
   | { type: 'movimento'; tokenId: string; path: { x: number; y: number }[] };
 

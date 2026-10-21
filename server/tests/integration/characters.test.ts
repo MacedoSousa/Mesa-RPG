@@ -71,3 +71,22 @@ describe('Criação de personagem (API)', () => {
     expect(res.body.maps.map((m: { key: string }) => m.key)).toEqual(['acampamento', 'submundo', 'olimpo', 'rio_hudson']);
   });
 });
+
+describe('Armas e armaduras com rank', () => {
+  it('guarda item com rank no inventário, compara e respeita o nível exigido', async () => {
+    const { CharacterService } = await import('../../src/services/characterService');
+    const u = await registerUser('percy');
+    const c = await createCharacter(u);
+    await CharacterService.grantReward(c.id, { xp: 0, dracmas: 0, items: [{ itemKey: 'espada_longa+1~de_fogo', quantity: 1 }, { itemKey: 'espada_longa+3', quantity: 1 }] });
+    const { body } = await request(app).get(`/api/characters/${c.id}`).set(auth(u)).expect(200);
+    const fire = body.character.inventory.find((i: { itemKey: string }) => i.itemKey === 'espada_longa+1~de_fogo');
+    expect(fire.item).toMatchObject({ name: 'Espada Longa de Fogo +1', rank: 1 });
+    expect(fire.allowed).toBe(true);
+    const epic = body.character.inventory.find((i: { itemKey: string }) => i.itemKey === 'espada_longa+3');
+    expect(epic.allowed).toBe(false);
+    expect(epic.reasons.join()).toMatch(/nível 5/);
+    await request(app).post(`/api/characters/${c.id}/equip`).set(auth(u)).send({ slot: 'mainHand', itemKey: 'espada_longa+3' }).expect(422);
+    const ok = await request(app).post(`/api/characters/${c.id}/equip`).set(auth(u)).send({ slot: 'mainHand', itemKey: 'espada_longa+1~de_fogo' }).expect(200);
+    expect(ok.body.character.equipment.mainHand).toBe('espada_longa+1~de_fogo');
+  });
+});

@@ -95,6 +95,7 @@ Escolha armas e armadura. Itens com **🔒 cadeado** não podem ser usados pelo 
 
 - **Barra no topo:** ❤️ **PV** (vida) e ⚡ **Estamina** (energia para poderes), sua **CA** e, no combate, quanto ainda resta de Ação, Bônus, Reação e Movimento.
 - **Mapa:** cada quadrado tem 1,5 m. Ao escolher *mover*, as casas que você alcança ficam destacadas. Arraste para olhar o mapa e use dois dedos para dar zoom.
+- **Bonecos:** heróis e monstros aparecem como bonequinhos que andam pelo caminho, golpeiam, tomam dano (piscam em vermelho) e caem. Os heróis usam o mesmo boneco 3D da criação, com a arma equipada. O botão no canto do mapa alterna entre **Bonecos · alta**, **Bonecos · leve** (para celular mais fraco) e **Fichas** redondas.
 - **Abas embaixo:**
   - ⚔️ **Ações:** mover, atacar, empurrar, golpear o cenário, poder divino.
   - 🎲 **Dados:** atalhos de rolagem.
@@ -200,6 +201,19 @@ Sempre que o resultado é incerto, o Mestre pede um **teste**. No Mesa RPG, um *
 - **XP:** cada monstro derrotado e cada quest concluída dá **experiência** para todos os heróis. O Mestre também dá XP extra por **boas ideias e boa interpretação**. Conversar com o monstro em vez de lutar também conta!
 - **Nível:** com **300 XP** você vai para o nível 2, com **900** para o 3, com **2.700** para o 4 e com **6.500** para o 5. O app avisa **🆙** e seu PV máximo aumenta. Veja a barra de XP na sua ficha.
 - **Baús 🧰:** chegue ao lado e toque em **Abrir baú** (aba ⚔️ Ações) ou direto no baú. Se estiver trancado, o app tenta abrir a fechadura (Prestidigitação) ou arrombar (Atletismo). Não abriu? Tente de novo. O que estiver dentro vai direto para o seu inventário.
+- **Espólio 💰:** monstros derrotados às vezes deixam cair uma sacola. Chegue perto e use **Abrir baú** para recolher. Os mais fortes quase sempre deixam algo.
+- **Ranks de armas e armaduras:** a cor do nome mostra a qualidade.
+
+  | Rank | Cor | Bônus | Nível mínimo |
+  |---|---|---|---|
+  | Comum | cinza | — | 1 |
+  | Refinado | verde | +1 | 1 |
+  | Heroico | azul | +2 | 3 |
+  | Épico | roxo | +3 | 5 |
+  | Divino | dourado | +4 | 8 |
+
+  Em arma, o bônus soma no acerto e no dano; em armadura, na CA (escudos ganham menos). Alguns itens têm **encantamento**: *de Fogo* (+1d4 de fogo), *do Titã* (+1 Força), *contra Fogo* (resistência)… Há também encantamentos com preço, como *Brutal* (+3 de dano e −1 para acertar) e *da Fortaleza* (+2 CA e −1,5 m de deslocamento).
+- **Trocar de equipamento:** na ficha, cada item mostra setas **▲ verdes** (melhora) e **▼ vermelhas** (piora) comparando com o que você usa: CA, acerto, dano médio, atributos e resistências. **⬆ Melhor que o seu** aparece no topo da lista. Item acima do seu nível fica 🔒 até você subir.
 - **Dracmas:** a moeda dos deuses. Servem para pagar o barqueiro dos mortos, comprar favores e subornar monstros gananciosos.
 
 ---

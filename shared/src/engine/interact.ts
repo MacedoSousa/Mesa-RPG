@@ -35,8 +35,9 @@ export function placeChest(
 /** Herói ao lado abre o baú (Ação no combate). Trancado: teste de Prestidigitação (DES) ou Atletismo (FOR). */
 export function openChest(ctx: EngineContext, t: Token, x: number, y: number) {
   const tile = tileAt(ctx.state.map, x, y);
-  if (!tile?.o || tile.o.type !== 'bau') throw new CommandError(tile?.o?.type === 'bau_aberto' ? 'Este baú já foi aberto' : 'Não há baú aí');
-  if (gridDistance(t, { x, y }) > 1) throw new CommandError('Chegue ao lado do baú para abrir');
+  if (!tile?.o || (tile.o.type !== 'bau' && tile.o.type !== 'espolio')) throw new CommandError(tile?.o?.type === 'bau_aberto' ? 'Este baú já foi aberto' : 'Não há baú aí');
+  const bag = tile.o.type === 'espolio';
+  if (gridDistance(t, { x, y }) > 1) throw new CommandError(bag ? 'Chegue perto do espólio para recolher' : 'Chegue ao lado do baú para abrir');
   const eco = economyOf(ctx, t);
   if (eco) {
     if (eco.action < 1) throw new CommandError('Você já usou sua Ação neste turno');
@@ -59,10 +60,10 @@ export function openChest(ctx: EngineContext, t: Token, x: number, y: number) {
   }
   const loot = chest.loot ?? [];
   const dracmas = chest.dracmas ?? 0;
-  tile.o = { type: 'bau_aberto', hp: OBJECTS.bau_aberto.maxHp };
+  tile.o = bag ? undefined : { type: 'bau_aberto', hp: OBJECTS.bau_aberto.maxHp };
   ctx.emit({ type: 'destruicao', x, y });
   const desc = [...loot.map((l) => `${l.quantity}× ${getItem(l.itemKey)?.name ?? l.itemKey}`), dracmas ? `${dracmas} dracmas` : ''].filter(Boolean).join(', ');
-  ctx.log(`🧰 ${t.name} abre o baú e encontra: ${desc || 'nada… só poeira e uma teia de aranha'}!`, { type: 'recompensa' });
+  ctx.log(bag ? `💰 ${t.name} recolhe o espólio: ${desc || 'nada de valor'}!` : `🧰 ${t.name} abre o baú e encontra: ${desc || 'nada… só poeira e uma teia de aranha'}!`, { type: 'recompensa' });
   if (t.characterId && (loot.length || dracmas)) {
     grantReward(ctx, t.characterId, { items: loot, dracmas, reason: 'baú de tesouro' });
     for (const l of loot) if (getItem(l.itemKey)?.kind === 'consumivel') t.consumables[l.itemKey] = (t.consumables[l.itemKey] ?? 0) + l.quantity;
@@ -85,4 +86,18 @@ export function grantToHeroes(
   }
   const parts = [o.xp ? `${o.xp} XP` : '', o.dracmas ? `${o.dracmas} dracmas` : '', ...o.items.map((l) => `${l.quantity}× ${getItem(l.itemKey)!.name}`)].filter(Boolean);
   ctx.log(`🎁 Recompensa (${o.reason}) para ${heroes.map((h) => h.name).join(', ')}: ${parts.join(', ') || 'reconhecimento dos deuses'}`, { type: 'recompensa' });
+}
+
+/** Monstro derrotado pode deixar espólio (sacola) no chão, com chance pelo nível de desafio. */
+export function dropMonsterLoot(ctx: EngineContext, monster: Token, cr: string) {
+  if (ctx.state.options?.monsterLoot === false) return;
+  const tile = tileAt(ctx.state.map, monster.x, monster.y);
+  if (!tile || tile.o) return;
+  const n = cr.includes('/') ? Number(cr.split('/')[0]) / Number(cr.split('/')[1]) : Number(cr);
+  const [chance, tier]: [number, LootTier] = n >= 6 ? [1, 'raro'] : n >= 4 ? [1, 'incomum'] : n >= 2 ? [0.6, 'incomum'] : n >= 1 ? [0.5, 'comum'] : [0.3, 'comum'];
+  if (ctx.rng() >= chance) return;
+  const r = rollLoot(tier, ctx.rng);
+  tile.o = { type: 'espolio', hp: OBJECTS.espolio.maxHp, loot: r.loot, dracmas: r.dracmas };
+  ctx.log(`💰 ${monster.name} deixou cair um espólio! Chegue perto e use "🧰 Abrir baú" para recolher.`, { type: 'recompensa' });
+  ctx.log(`(Mestre) Espólio de ${monster.name}: ${[...r.loot.map((l) => `${l.quantity}× ${getItem(l.itemKey)?.name}`), `${r.dracmas} dracmas`].join(', ')}`, { type: 'mapa', visibility: 'mestre' });
 }

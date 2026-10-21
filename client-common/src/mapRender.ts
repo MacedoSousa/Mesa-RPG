@@ -349,7 +349,7 @@ export interface Light {
 
 export interface Animated {
   node: Container;
-  kind: 'flicker' | 'pulse' | 'bob';
+  kind: 'flicker' | 'pulse' | 'bob' | 'sway';
   phase: number;
   base: number;
 }
@@ -499,9 +499,13 @@ export function buildStaticLayers(map: MapState): StaticLayers {
           g.circle(cx, cy - r * 0.35, r * 0.62).fill(base);
           g.circle(cx - r * 0.2, cy - r * 0.45, r * 0.3).fill({ color: 0xffffff, alpha: 0.12 });
           c.addChild(g);
+          // Gira em torno do tronco: a copa balança com o vento
+          const baseY = py + TILE * 0.85;
+          c.pivot.set(cx, baseY);
+          c.position.set(cx, baseY);
           canopy.addChild(c);
           canopyByCell.set(`${x},${y}`, c);
-          animated.push({ node: c, kind: 'bob', phase: h * 6.28, base: 0 });
+          animated.push({ node: c, kind: 'sway', phase: h * 6.28 + x * 0.35, base: baseY });
           break;
         }
         case 'toco': {
@@ -620,6 +624,18 @@ function drawObject(tile: Tile, px: number, py: number, animated: Animated[], li
         c.addChild(shine);
         animated.push({ node: shine, kind: 'pulse', phase: cellHash(x, y, 2) * 6.28, base: 1 });
       }
+      break;
+    }
+    case 'espolio': {
+      // Sacola de couro amarrada, com moedas espalhadas e um brilho
+      g.ellipse(cx, cy + 9, 13, 4).fill({ color: 0x000000, alpha: 0.3 });
+      g.poly([cx - 11, cy + 8, cx - 12, cy - 2, cx - 6, cy - 9, cx + 6, cy - 9, cx + 12, cy - 2, cx + 11, cy + 8]).fill(0x8a6a3a).stroke({ width: 2, color: 0x3e2a10 });
+      g.rect(cx - 6, cy - 12, 12, 4).fill(0x6e5028).stroke({ width: 1.5, color: 0x3e2a10 });
+      g.circle(cx - 13, cy + 8, 3).fill(0xd4af37).stroke({ width: 1, color: 0x7a5a10 });
+      g.circle(cx + 14, cy + 6, 2.5).fill(0xd4af37).stroke({ width: 1, color: 0x7a5a10 });
+      const glint = new Graphics().star(cx + 5, cy - 3, 4, 4, 1.5).fill(0xfff6c0);
+      c.addChild(glint);
+      animated.push({ node: glint, kind: 'pulse', phase: cellHash(x, y, 3) * 6.28, base: 1 });
       break;
     }
   }

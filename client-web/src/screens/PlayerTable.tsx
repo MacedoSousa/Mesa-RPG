@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ABILITIES, ABILITY_LABELS, ITEMS, SKILLS, TERRAIN, checkLabel, checkModifier, d20Formula, formatModifier, gridDistance, reachableCells,
+  ABILITIES, ABILITY_LABELS, SKILLS, getItem, TERRAIN, checkLabel, checkModifier, d20Formula, formatModifier, gridDistance, reachableCells,
   type AdvantageState, type LogEntry, type PendingCheck, type ProjectedState, type Skill, type TableState, type Token,
 } from '@mesa/shared';
 import {
@@ -188,7 +188,7 @@ export function PlayerTable({ campaignId }: { campaignId: string }) {
       case null:
         if (!target) {
           const tile = state!.map.tiles[cell.y * state!.map.width + cell.x];
-          if (tile?.o?.type === 'bau') {
+          if (tile?.o?.type === 'bau' || tile?.o?.type === 'espolio') {
             if (await send({ type: 'object.open', tokenId: me.id, x: cell.x, y: cell.y })) setMode(null);
             return;
           }
@@ -235,7 +235,7 @@ function highlightsFor(state: ProjectedState, me: Token, mode: Mode, attackIndex
   }
   if (mode === 'bau') {
     state.map.tiles.forEach((tile, i) => {
-      if (tile.o?.type !== 'bau') return;
+      if (tile.o?.type !== 'bau' && tile.o?.type !== 'espolio') return;
       const x = i % state.map.width;
       const y = Math.floor(i / state.map.width);
       out.push({ x, y, color: gridDistance(me, { x, y }) <= 1 ? 0xffd34d : 0x888888, alpha: 0.45 });
@@ -396,7 +396,7 @@ function ItemsPanel({ me, character, canAct, send, allies }: { me?: Token; chara
           {consumables.map(([key, qty]) => (
             <div key={key} className="flex items-center gap-2 rounded-lg bg-white/5 p-2">
               <span className="text-xl">🧪</span>
-              <span className="flex-1"><strong>{ITEMS[key]?.name ?? key}</strong> ×{qty}<span className="block text-xs text-slate-400">{ITEMS[key]?.description}</span></span>
+              <span className="flex-1"><strong>{getItem(key)?.name ?? key}</strong> ×{qty}<span className="block text-xs text-slate-400">{getItem(key)?.description}</span></span>
               <div className="flex flex-col gap-1">
                 <Button size="sm" disabled={!canAct} onClick={() => me && void send({ type: 'item.use', tokenId: me.id, itemKey: key })}>Usar</Button>
                 {near.map((a) => (

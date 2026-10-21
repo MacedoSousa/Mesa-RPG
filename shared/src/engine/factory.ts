@@ -31,7 +31,7 @@ export function weaponAttack(weapon: WeaponItem, mods: AbilityScores, proficienc
   return {
     name: offHand ? `${weapon.name} (mão secundária)` : weapon.name,
     toHit: mod + proficiency + (weapon.attackBonus ?? 0),
-    damage: `${dice}${signed(dmgMod + (weapon.attackBonus ?? 0))}`,
+    damage: `${dice}${signed(dmgMod + (weapon.attackBonus ?? 0) + (weapon.damageBonus ?? 0))}${weapon.extraDamage ? `+${weapon.extraDamage}` : ''}`,
     damageType: weapon.damageType,
     range: weapon.range,
     longRange: weapon.longRange,
@@ -95,6 +95,10 @@ export function tokenFromCharacter(c: CharacterSnapshot, x: number, y: number, i
     saves: [...(getClass(c.build.classKey)?.savingThrows ?? [])],
     level: c.build.level,
     face: c.face ?? undefined,
+    look3d: {
+      classKey: c.build.classKey, race: c.build.race, divinity: c.build.divinity, equipment: { ...c.build.equipment },
+      inventory: c.inventory.map((i) => i.itemKey).filter((k) => k === 'grimorio' || k === 'lira'),
+    },
   };
 }
 

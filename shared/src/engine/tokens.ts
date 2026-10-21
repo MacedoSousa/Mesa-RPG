@@ -4,6 +4,7 @@ import { getMonster } from '../content/monsters';
 import { roll } from '../dice';
 import { grantReward, partyTokens, type EngineContext } from './context';
 import type { TableState, Token } from './types';
+import { dropMonsterLoot } from './interact';
 
 export function findToken(state: TableState, id: string): Token | undefined {
   return state.tokens.find((t) => t.id === id);
@@ -132,6 +133,7 @@ export function awardMonsterXp(ctx: EngineContext, monster: Token) {
   const each = Math.max(1, Math.floor(def.xp / party.length));
   for (const h of party) grantReward(ctx, h.characterId!, { xp: each, reason: `derrotar ${monster.name}` });
   ctx.log(`⭐ +${each} XP para cada herói por derrotar ${monster.name}`, { type: 'recompensa' });
+  dropMonsterLoot(ctx, monster, def.cr);
 }
 
 export function killHero(ctx: EngineContext, t: Token) {

@@ -1,10 +1,10 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
-import { ABILITIES, ABILITY_LABELS, SKILLS, formatModifier, type EquipmentSlot, type Skill } from '@mesa/shared';
-import { Badge, Bar, Button, Card, Modal, PortraitEditor, Spinner, Term, TextArea, api, cx, errorMessage, isPortraitSpec, navigate, portraitUrl, randomPortrait, toast, type PortraitSpec } from '@mesa/common';
+import { ABILITIES, ABILITY_LABELS, SKILLS, compareEquip, formatModifier, type CharacterBuild, type EquipmentSlot, type Skill } from '@mesa/shared';
+import { Badge, Bar, Button, Card, CompareDeltas, ItemName, Modal, PortraitEditor, Spinner, Term, TextArea, api, cx, errorMessage, isPortraitSpec, navigate, portraitUrl, randomPortrait, toast, type PortraitSpec } from '@mesa/common';
 import type { CharacterDTO } from '../types';
-import { LookEditor } from '../hero3d/LookEditor';
+import { LookEditor } from '@mesa/3d/LookEditor';
 
-const HeroViewer = lazy(() => import('../hero3d/HeroViewer'));
+const HeroViewer = lazy(() => import('@mesa/3d/HeroViewer'));
 
 const SLOT_FOR: Record<string, EquipmentSlot> = { arma: 'mainHand', armadura: 'armor', escudo: 'shield' };
 
@@ -59,6 +59,17 @@ export function CharacterView({ id }: { id: string }) {
 
   const s = c.stats;
   const equippedKeys = new Set(Object.values(c.equipment).filter(Boolean));
+  const build: CharacterBuild = {
+    race: c.race, divinity: c.divinity, classKey: c.classKey, level: c.level, affinity: c.affinity,
+    baseAbilities: c.baseAbilities, skills: c.skills as Skill[], equipment: c.equipment,
+  } as CharacterBuild;
+  // Comparação com o equipado (setas ▲▼) e melhorias primeiro
+  const compared = c.inventory.map((i) => ({
+    ...i,
+    cmp: i.item && SLOT_FOR[i.item.kind] && !equippedKeys.has(i.itemKey) ? (() => { try { return compareEquip(build, i.itemKey); } catch { return null; } })() : null,
+  }));
+  const order = (x: (typeof compared)[number]) => (equippedKeys.has(x.itemKey) ? -100 : x.cmp && x.cmp.allowed && x.cmp.score > 0 ? -50 - x.cmp.score : x.item?.kind === 'consumivel' ? 10 : 0);
+  compared.sort((a, b) => order(a) - order(b));
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-4 pb-16">
@@ -119,15 +130,16 @@ export function CharacterView({ id }: { id: string }) {
 
       <Card title={<span>Inventário — <Term k="restricao">bloqueios</Term> por classe e status</span>}>
         <div className="space-y-2">
-          {c.inventory.map((i) => {
+          {compared.map((i) => {
             const slot = i.item ? SLOT_FOR[i.item.kind] : undefined;
             const equipped = equippedKeys.has(i.itemKey);
             return (
               <div key={i.itemKey} className={cx('flex items-center gap-3 rounded-lg border p-2', equipped ? 'border-amber-400/60 bg-amber-500/10' : 'border-white/10 bg-white/5', !i.allowed && 'opacity-60')}>
                 <span className="text-2xl">{!i.allowed ? '🔒' : i.item?.kind === 'arma' ? '⚔️' : i.item?.kind === 'consumivel' ? '🧪' : i.item?.kind === 'equipamento' ? '🎒' : '🛡️'}</span>
                 <div className="flex-1">
-                  <p className="font-semibold">{i.item?.name ?? i.itemKey} {i.quantity > 1 && <span className="text-slate-400">×{i.quantity}</span>}</p>
+                  <p><ItemName item={i.item} fallback={i.itemKey} /> {i.quantity > 1 && <span className="text-slate-400">×{i.quantity}</span>} {equipped && <Badge color="amber">equipado</Badge>}</p>
                   <p className="text-xs text-slate-400">{i.item?.description}</p>
+                  {i.cmp && <CompareDeltas cmp={i.cmp} compact />}
                   {!i.allowed && <p className="text-xs text-rose-300">{i.reasons.join(' · ')}</p>}
                 </div>
                 {slot && i.allowed && (

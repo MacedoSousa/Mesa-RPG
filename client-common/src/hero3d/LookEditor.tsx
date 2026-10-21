@@ -1,4 +1,4 @@
-import { BODY_KEYS, BODY_LABELS, OUTFIT_COLORS, cx, type HeroLook, type PortraitSpec } from '@mesa/common';
+import { BODY_KEYS, BODY_LABELS, OUTFIT_COLORS, cx, type HeroLook, type PortraitSpec } from '../index';
 
 /** Ajustes do corpo 3D: silhueta, cor da roupa, altura, porte e elmo/chapéu. */
 export function LookEditor({ spec, onChange }: { spec: PortraitSpec; onChange: (s: PortraitSpec) => void }) {

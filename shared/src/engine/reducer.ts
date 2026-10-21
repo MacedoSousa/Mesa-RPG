@@ -264,6 +264,10 @@ function execute(ctx: EngineContext, cmd: Command) {
       state.paused = cmd.paused;
       ctx.log(cmd.paused ? '⏸️ O Mestre pausou a mesa.' : '▶️ A mesa foi retomada.', { type: 'sistema' });
       return;
+    case 'table.options':
+      state.options = { ...state.options, ...(cmd.monsterLoot !== undefined ? { monsterLoot: cmd.monsterLoot } : {}) };
+      ctx.log(`⚙️ Espólio dos monstros: ${state.options.monsterLoot === false ? 'desligado' : 'ligado'}`, { type: 'sistema', visibility: 'mestre' });
+      return;
     case 'chapter.create':
       state.chapters.push({ id: ctx.id('cap'), title: cmd.title, description: cmd.description, status: 'pendente', order: state.chapters.length + 1 });
       ctx.log(`📖 Capítulo criado: ${cmd.title}`, { type: 'capitulo', visibility: 'mestre' });

@@ -1,11 +1,14 @@
 import 'pixi.js/unsafe-eval'; // compatível com a Content-Security-Policy do servidor (sem eval)
 import { Application, Container, DisplacementFilter, Graphics, Sprite, Text } from 'pixi.js';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CONDITIONS, SURFACES, type ProjectedState } from '@mesa/shared';
 import { useTable, type FxEvent } from './stores';
+import { cx } from './ui';
 import { artKeyFor, getArtTexture, isPainted, loadPaintedArt, onArtLoaded } from './tokenArt';
 import { MOOD_STYLE, TILE, buildStaticLayers, glowTexture, noiseTexture, staticSignature, type Animated, type StaticLayers } from './mapRender';
 import { getPortraitTexture, onPortraitLoaded } from './portrait';
+import { AmbientLayer } from './ambient';
+import { FigureLayer, figureMode, onFiguresPref, setFigureMode, type FigureMode } from './figureLayer';
 
 export interface Cell {
   x: number;
@@ -36,7 +39,11 @@ interface LiveFx {
   node: Container;
   life: number;
   max: number;
-  kind: 'float' | 'burst';
+  kind: 'float' | 'burst' | 'slash' | 'proj';
+  /** Espera antes de aparecer (ms): o número de dano surge no impacto do golpe. */
+  delay?: number;
+  from?: { x: number; y: number };
+  to?: { x: number; y: number };
 }
 
 interface Layers {
@@ -48,6 +55,8 @@ interface Layers {
   marks: Graphics;
   features: Container;
   tokens: Container;
+  figs: FigureLayer;
+  ambient: AmbientLayer;
   canopy: Container;
   dark: Graphics;
   lights: Container;
@@ -66,6 +75,11 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
   const props = useRef({ onCellClick, onCellHover, paintMode, state });
   props.current = { onCellClick, onCellHover, paintMode, state };
   const focused = useRef(false);
+  const shake = useRef({ t: 0, mag: 0 });
+  const [mode, setMode] = useState<FigureMode>(figureMode);
+  const figMode = mode !== 'fichas';
+  const figModeRef = useRef(figMode);
+  figModeRef.current = figMode;
   const fxQueue = useTable((s) => s.fx);
   const consumeFx = useTable((s) => s.consumeFx);
 
@@ -83,6 +97,20 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
       }
       el.appendChild(app.canvas);
       app.canvas.style.touchAction = 'none';
+      // Contexto gráfico perdido (pouca memória de vídeo): ao voltar, refaz tudo que vem de canvas
+      const onLost = (e: Event) => { e.preventDefault(); console.warn('Mapa: contexto WebGL perdido'); };
+      const onRestored = () => {
+        console.warn('Mapa: contexto WebGL restaurado');
+        staticRef.current = null;
+        layers.current?.figs.reset();
+        drawRef.current();
+      };
+      app.canvas.addEventListener('webglcontextlost', onLost);
+      app.canvas.addEventListener('webglcontextrestored', onRestored);
+      cleanup.push(() => {
+        app.canvas.removeEventListener('webglcontextlost', onLost);
+        app.canvas.removeEventListener('webglcontextrestored', onRestored);
+      });
       const world = new Container();
       const ground = new Container();
       const water = new Container();
@@ -91,6 +119,8 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
       const marks = new Graphics();
       const features = new Container();
       const tokens = new Container();
+      const figs = new FigureLayer(() => drawRef.current());
+      const ambient = new AmbientLayer();
       const canopy = new Container();
       const dark = new Graphics();
       const lights = new Container();
@@ -103,10 +133,11 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
       disp.alpha = 0;
       water.filters = [new DisplacementFilter({ sprite: disp, scale: 6 })];
       lights.blendMode = 'add';
-      world.addChild(water, ground, grid, surfaces, marks, features, tokens, canopy, dark, lights, fx, disp);
+      world.addChild(water, ground, grid, surfaces, marks, features, tokens, figs.container, canopy, ambient.container, dark, lights, ambient.glow, fx, disp);
       app.stage.addChild(world);
       appRef.current = app;
-      layers.current = { world, ground, water, grid, surfaces, marks, features, tokens, canopy, dark, lights, fx, disp };
+      layers.current = { world, ground, water, grid, surfaces, marks, features, tokens, figs, ambient, canopy, dark, lights, fx, disp };
+      cleanup.push(() => figs.destroy(), () => ambient.destroy());
 
       // Encaixa o mapa na tela
       const { width, height } = props.current.state.map;
@@ -118,6 +149,14 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
       let clock = 0;
       app.ticker.add((t) => {
         clock += t.deltaMS / 1000;
+        figs.tick(t.deltaMS);
+        ambient.tick(t.deltaMS, clock);
+        // Tremor de tela nos golpes fortes (mexe no pivô para não atrapalhar o arrasto)
+        if (shake.current.t > 0) {
+          shake.current.t -= t.deltaMS;
+          const m = shake.current.mag * Math.max(0, shake.current.t / 260);
+          world.pivot.set((Math.random() - 0.5) * m, (Math.random() - 0.5) * m);
+        } else if (world.pivot.x || world.pivot.y) world.pivot.set(0, 0);
         disp.x = (clock * 14) % 256;
         disp.y = (clock * 9) % 256;
         for (const a of animRef.current) {
@@ -129,6 +168,11 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
             a.node.alpha = 0.4 + (Math.sin(clock * 3 + a.phase) + 1) * 0.3;
           } else if (a.kind === 'bob') {
             a.node.y = Math.sin(clock * 0.9 + a.phase) * 0.8;
+          } else if (a.kind === 'sway') {
+            // Vento: rajadas lentas que passam pelo mapa da esquerda para a direita
+            const gust = 0.5 + 0.5 * Math.sin(clock * 0.35 - a.phase * 0.2);
+            a.node.rotation = Math.sin(clock * 1.4 + a.phase) * (0.012 + gust * 0.03);
+            a.node.y = a.base + Math.sin(clock * 0.9 + a.phase) * 0.6;
           }
         }
         for (const l of lightNodes.current) {
@@ -136,9 +180,22 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
           l.node.alpha = l.flicker ? l.base * (0.85 + Math.sin(clock * 9 + l.phase) * 0.1 + Math.sin(clock * 21 + l.phase) * 0.05) : l.base;
         }
         for (const f of liveFx.current) {
+          if (f.delay && f.delay > 0) {
+            f.delay -= t.deltaMS;
+            f.node.visible = false;
+            continue;
+          }
+          f.node.visible = true;
           f.life -= t.deltaMS;
           const p = 1 - f.life / f.max;
-          if (f.kind === 'float') {
+          if (f.kind === 'proj' && f.from && f.to) {
+            // Projétil em arco até o alvo
+            f.node.position.set(f.from.x + (f.to.x - f.from.x) * p, f.from.y + (f.to.y - f.from.y) * p - Math.sin(p * Math.PI) * TILE * 0.5);
+            f.node.alpha = 1;
+          } else if (f.kind === 'slash') {
+            f.node.scale.set(0.7 + p * 0.5);
+            f.node.alpha = p < 0.3 ? p / 0.3 : 1 - (p - 0.3) / 0.7;
+          } else if (f.kind === 'float') {
             f.node.y -= t.deltaMS * 0.03;
             f.node.alpha = 1 - p;
           } else {
@@ -300,6 +357,7 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
       L.grid.stroke({ width: 1, color: 0x000000, alpha: 0.14 });
     }
     L.grid.visible = showGrid;
+    L.ambient.setup(map.width, map.height, mood, map.tiles.some((t) => t.t === 'arvore'));
     const built = staticRef.current!.layers;
 
     // Superfícies (dinâmicas): fogo, água, gelo, óleo, veneno, vapor
@@ -352,11 +410,16 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
       L.marks.roundRect(h.x * TILE + 3, h.y * TILE + 3, TILE - 6, TILE - 6, 8).fill({ color: h.color, alpha: h.alpha ?? 0.3 }).stroke({ width: 2, color: h.color, alpha: 0.85 });
     }
 
-    // Tokens
+    // Tokens: bonecos 3D pré-renderizados (quando prontos) ou fichas redondas
     for (const c of L.tokens.removeChildren()) c.destroy({ children: true });
     const currentId = combat?.currentTokenId ?? null;
+    L.figs.container.visible = figModeRef.current;
+    const asFigures = figModeRef.current ? L.figs.sync(tokens, { currentId, selectedId: selectedTokenId }) : new Set<string>();
     const sorted = [...tokens].sort((a, b) => a.y - b.y);
     for (const t of sorted) {
+      // Em lugares escuros, heróis carregam uma tocha
+      if (t.kind !== 'monstro' && !t.dead && MOOD_STYLE[mood].darkness > 0.2) lightList.push({ x: t.x + 0.5, y: t.y + 0.5, radius: 3, color: 0xffd9a0, flicker: true });
+      if (asFigures.has(t.id)) continue;
       const c = new Container();
       c.position.set(t.x * TILE + TILE / 2, t.y * TILE + TILE / 2);
       const color = parseInt((t.color ?? '#888888').replace('#', ''), 16);
@@ -421,8 +484,6 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
       }
       if (t.hidden) c.alpha = 0.45;
       L.tokens.addChild(c);
-      // Em lugares escuros, heróis carregam uma tocha
-      if (t.kind !== 'monstro' && !t.dead && MOOD_STYLE[mood].darkness > 0.2) lightList.push({ x: t.x + 0.5, y: t.y + 0.5, radius: 3, color: 0xffd9a0, flicker: true });
     }
 
     // Copas das árvores ficam transparentes sobre tokens
@@ -485,8 +546,49 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
       liveFx.current.push({ node, kind, life: ms, max: ms });
     };
     const tokenPos = (id: string) => state.tokens.find((t) => t.id === id);
+    // Golpes e projéteis: o dano aparece no impacto
+    const attacks = (fxQueue as FxEvent[]).filter((e) => e.fx.type === 'ataque');
+    const impactDelay = (tokenId: string) => (attacks.some((a) => a.fx.type === 'ataque' && a.fx.targetId === tokenId) ? 280 : 0);
+    const center = (t: { x: number; y: number }) => ({ x: t.x * TILE + TILE / 2, y: t.y * TILE + TILE / 2 });
     for (const { id, fx } of fxQueue as FxEvent[]) {
       used.push(id);
+      if (fx.type === 'movimento') L.figs.onMove(fx.tokenId, fx.path);
+      if (fx.type === 'ataque') {
+        L.figs.onAttack(fx.tokenId, fx.targetId);
+        const a = tokenPos(fx.tokenId);
+        const b = tokenPos(fx.targetId);
+        if (a && b) {
+          const A = center(a), B = center(b);
+          const ang = Math.atan2(B.y - A.y, B.x - A.x);
+          if (Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) <= 1) {
+            // Corpo a corpo: corte (heróis) ou garras (monstros)
+            const g = new Graphics();
+            if (a.kind === 'monstro') {
+              for (let k = -1; k <= 1; k++) g.moveTo(-14, k * 8 - 10).lineTo(14, k * 8 + 10).stroke({ width: 3, color: 0xff5a5a, alpha: 0.95 });
+            } else {
+              g.arc(0, 0, TILE * 0.42, -1.1, 1.1).stroke({ width: 5, color: 0xffffff, alpha: 0.95 });
+              g.arc(0, 0, TILE * 0.34, -0.9, 0.9).stroke({ width: 2, color: 0xfff3b0, alpha: 0.8 });
+            }
+            g.rotation = ang;
+            g.position.set(B.x - Math.cos(ang) * 6, B.y - Math.sin(ang) * 6 - TILE * 0.2);
+            L.fx.addChild(g);
+            liveFx.current.push({ node: g, kind: 'slash', life: 320, max: 320, delay: 140 });
+          } else {
+            // À distância: flecha (heróis) ou bola de energia (monstros)
+            const g = new Graphics();
+            if (a.kind === 'monstro') g.circle(0, 0, 7).fill({ color: 0xff7a2a, alpha: 0.95 }).circle(0, 0, 4).fill(0xfff0a0);
+            else g.moveTo(-12, 0).lineTo(10, 0).stroke({ width: 2.5, color: 0xe8d8b0 }).poly([10, -4, 16, 0, 10, 4]).fill(0xd0d0d0);
+            g.rotation = ang;
+            L.fx.addChild(g);
+            liveFx.current.push({ node: g, kind: 'proj', life: 280, max: 280, from: { x: A.x, y: A.y - TILE * 0.3 }, to: { x: B.x, y: B.y - TILE * 0.3 } });
+          }
+        }
+      }
+      if (fx.type === 'dano') {
+        L.figs.onHit(fx.tokenId, impactDelay(fx.tokenId));
+        if (fx.amount >= 10) setTimeout(() => { shake.current = { t: 260, mag: Math.min(10, 3 + fx.amount / 4) }; }, impactDelay(fx.tokenId));
+      }
+      if (fx.type === 'explosao') shake.current = { t: 320, mag: 8 };
       if (fx.type === 'explosao' || fx.type === 'destruicao') {
         const r = fx.type === 'explosao' ? (fx.radius + 0.5) * TILE : TILE * 0.6;
         const g = new Graphics().circle(0, 0, r).fill({ color: fx.type === 'explosao' ? 0xff7b00 : 0xb8a58a, alpha: 0.7 });
@@ -497,14 +599,34 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
         if (!t) continue;
         const text = fx.type === 'dano' ? `-${fx.amount}` : fx.type === 'cura' ? `+${fx.amount}` : 'Errou!';
         const fill = fx.type === 'dano' ? 0xff4d4d : fx.type === 'cura' ? 0x5cff8a : 0xdddddd;
-        const label = new Text({ text, style: { fontSize: 20, fontWeight: '800', fill, stroke: { color: 0x000000, width: 4 } } });
+        const label = new Text({ text, style: { fontSize: fx.type === 'dano' && fx.amount >= 10 ? 26 : 20, fontWeight: '800', fill, stroke: { color: 0x000000, width: 4 } } });
         label.anchor.set(0.5);
-        label.position.set(t.x * TILE + TILE / 2, t.y * TILE);
-        spawn(label, 'float', 1200);
+        label.position.set(t.x * TILE + TILE / 2, t.y * TILE - (figModeRef.current ? TILE * 0.5 : 0));
+        L.fx.addChild(label);
+        liveFx.current.push({ node: label, kind: 'float', life: 1200, max: 1200, delay: fx.type === 'cura' ? 0 : impactDelay(fx.tokenId) });
       }
     }
     consumeFx(used);
   }, [fxQueue, consumeFx, state.tokens]);
 
-  return <div ref={host} className={className ?? 'h-full w-full'} />;
+  useEffect(() => {
+    const off = onFiguresPref(() => { const m = figureMode(); layers.current?.figs.setMode(m); setMode(m); });
+    return () => {
+      off();
+    };
+  }, []);
+
+  return (
+    <div className={cx('relative', className ?? 'h-full w-full')}>
+      <div ref={host} className="absolute inset-0" />
+      <button
+        type="button"
+        onClick={() => setFigureMode(mode === 'alta' ? 'leve' : mode === 'leve' ? 'fichas' : 'alta')}
+        title="Alternar: bonecos (alta) → bonecos (leve, para celular fraco) → fichas redondas"
+        className="absolute bottom-2 right-2 z-10 rounded-full bg-slate-950/80 px-3 py-1.5 text-xs text-slate-100 ring-1 ring-white/15 hover:bg-slate-800"
+      >
+        {mode === 'alta' ? '🧍 Bonecos · alta' : mode === 'leve' ? '🧍 Bonecos · leve' : '⚪ Fichas'}
+      </button>
+    </div>
+  );
 }
