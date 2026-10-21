@@ -1,83 +1,51 @@
-import { query, withTransaction } from '../config/database';
+import {
+  CreationOptional, DataTypes, InferAttributes, InferCreationAttributes, Model,
+} from 'sequelize';
+import type { Role } from '@mesa/shared';
+import { sequelize } from '../config/database';
 
-export type UserRole = 'jogador' | 'mestre';
+export class User extends Model<InferAttributes<User>, InferCreationAttributes<User>> {
+  declare id: CreationOptional<string>;
+  declare username: string;
+  declare email: string;
+  declare passwordHash: string;
+  declare displayName: string | null;
+  declare role: CreationOptional<Role>;
+  /** Incrementar invalida todos os refresh tokens ("sair de todos os dispositivos"). */
+  declare tokenVersion: CreationOptional<number>;
+  declare createdAt: CreationOptional<Date>;
+  declare updatedAt: CreationOptional<Date>;
+  declare deletedAt: CreationOptional<Date | null>;
 
-export interface UserRow {
-  id: string;
-  username: string;
-  email: string;
-  password_hash: string;
-  display_name: string | null;
-  role: UserRole;
-  created_at: Date;
-  updated_at: Date;
-  deleted_at: Date | null;
+  toPublic() {
+    return {
+      id: this.id,
+      username: this.username,
+      email: this.email,
+      displayName: this.displayName,
+      role: this.role,
+      createdAt: this.createdAt,
+    };
+  }
 }
 
-export type PublicUser = Omit<UserRow, 'password_hash' | 'deleted_at'>;
-
-export function toPublicUser(u: UserRow): PublicUser {
-  const { password_hash: _hash, deleted_at: _deleted, ...rest } = u;
-  return rest;
-}
-
-/** Todas as buscas padrão ignoram registros com soft delete (deleted_at IS NOT NULL). */
-export const UserModel = {
-  async findById(id: string): Promise<UserRow | null> {
-    const { rows } = await query<UserRow>('SELECT * FROM users WHERE id = $1 AND deleted_at IS NULL', [id]);
-    return rows[0] ?? null;
+User.init(
+  {
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    username: { type: DataTypes.STRING(32), allowNull: false },
+    email: { type: DataTypes.STRING(255), allowNull: false },
+    passwordHash: { type: DataTypes.TEXT, allowNull: false },
+    displayName: { type: DataTypes.STRING(60), allowNull: true },
+    role: { type: DataTypes.STRING(10), allowNull: false, defaultValue: 'PLAYER' },
+    tokenVersion: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+    createdAt: DataTypes.DATE,
+    updatedAt: DataTypes.DATE,
+    deletedAt: DataTypes.DATE,
   },
-
-  async findByLogin(login: string): Promise<UserRow | null> {
-    const { rows } = await query<UserRow>(
-      `SELECT * FROM users
-        WHERE deleted_at IS NULL
-          AND (LOWER(email) = LOWER($1) OR LOWER(username) = LOWER($1))
-        LIMIT 1`,
-      [login],
-    );
-    return rows[0] ?? null;
+  {
+    sequelize,
+    tableName: 'users',
+    paranoid: true, // Soft Delete: destroy() preenche deleted_at; consultas ignoram removidos
+    defaultScope: { attributes: { exclude: [] } },
   },
-
-  async existsActive(username: string, email: string): Promise<{ username: boolean; email: boolean }> {
-    const { rows } = await query<{ username_taken: boolean; email_taken: boolean }>(
-      `SELECT
-         EXISTS(SELECT 1 FROM users WHERE LOWER(username) = LOWER($1) AND deleted_at IS NULL) AS username_taken,
-         EXISTS(SELECT 1 FROM users WHERE LOWER(email) = LOWER($2) AND deleted_at IS NULL) AS email_taken`,
-      [username, email],
-    );
-    return { username: rows[0].username_taken, email: rows[0].email_taken };
-  },
-
-  async create(data: {
-    username: string;
-    email: string;
-    passwordHash: string;
-    displayName?: string | null;
-    role?: UserRole;
-  }): Promise<UserRow> {
-    const { rows } = await query<UserRow>(
-      `INSERT INTO users (username, email, password_hash, display_name, role)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING *`,
-      [data.username, data.email, data.passwordHash, data.displayName ?? null, data.role ?? 'jogador'],
-    );
-    return rows[0];
-  },
-
-  /** Soft delete: marca deleted_at e também "apaga" as fichas do usuário. */
-  async softDelete(id: string): Promise<boolean> {
-    return withTransaction(async (client) => {
-      const res = await client.query(
-        'UPDATE users SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL',
-        [id],
-      );
-      if (!res.rowCount) return false;
-      await client.query(
-        'UPDATE characters SET deleted_at = NOW() WHERE user_id = $1 AND deleted_at IS NULL',
-        [id],
-      );
-      return true;
-    });
-  },
-};
+);

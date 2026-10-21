@@ -1,237 +1,139 @@
-import { Server as HttpServer } from 'http';
+import type { Server as HttpServer } from 'http';
 import { Server, Socket } from 'socket.io';
+import { z } from 'zod';
+import { EVENTS, commandSchema, type Ack } from '@mesa/shared';
 import { corsOrigins } from '../config/env';
-import { CharacterModel } from '../models/Character';
-import { UserModel } from '../models/User';
-import { rollDice } from '../utils/dice';
-import { TokenPayload, verifyToken } from '../utils/jwt';
-
-/**
- * Sincronização Host (Mestre, no PC) ↔ Jogadores (web/celular).
- *
- * Fluxo:
- *  1. Cliente conecta com `io(url, { auth: { token } })`.
- *  2. Mestre emite `session:create` → recebe um código de 6 letras.
- *  3. Jogadores emitem `session:join { code, characterId }`.
- *  4. Rolagens, chat e atualizações de ficha são retransmitidos para a sala.
- */
-
-interface SessionPlayer {
-  userId: string;
-  username: string;
-  characterId: string;
-  characterName: string;
-  socketId: string;
-}
-
-interface GameSession {
-  code: string;
-  hostUserId: string;
-  hostSocketId: string;
-  players: Map<string, SessionPlayer>; // chave: userId
-  createdAt: Date;
-}
+import { Campaign } from '../models';
+import { User } from '../models';
+import { CampaignService } from '../services/campaignService';
+import { verifyAccessToken } from '../utils/security';
+import { SocketUser, TableManager, commandErrorMessage, room } from '../game/TableManager';
 
 interface SocketData {
-  user: TokenPayload;
-  sessionCode?: string;
+  user: SocketUser;
+  campaignId?: string;
+  masterId?: string;
+  bucket: { tokens: number; last: number };
 }
 
-type Ack<T = unknown> = (response: { ok: true; data?: T } | { ok: false; error: string }) => void;
+const joinSchema = z.object({ campaignId: z.string().uuid() });
+const commandPayloadSchema = z.object({ commandId: z.string().min(1).max(64), command: commandSchema });
 
-const sessions = new Map<string, GameSession>();
-let io: Server | null = null;
+const RATE = { capacity: 20, refillPerSec: 10 };
 
-const room = (code: string) => `session:${code}`;
-
-function generateCode(): string {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sem caracteres ambíguos (0/O, 1/I)
-  let code: string;
-  do {
-    code = Array.from({ length: 6 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('');
-  } while (sessions.has(code));
-  return code;
-}
-
-function sessionSnapshot(s: GameSession) {
-  return {
-    code: s.code,
-    hostUserId: s.hostUserId,
-    players: [...s.players.values()].map(({ socketId: _sid, ...p }) => p),
-    createdAt: s.createdAt,
-  };
+function allow(data: SocketData): boolean {
+  const now = Date.now();
+  const b = data.bucket;
+  b.tokens = Math.min(RATE.capacity, b.tokens + ((now - b.last) / 1000) * RATE.refillPerSec);
+  b.last = now;
+  if (b.tokens < 1) return false;
+  b.tokens -= 1;
+  return true;
 }
 
 function safeAck(ack: unknown): Ack {
   return typeof ack === 'function' ? (ack as Ack) : () => undefined;
 }
 
-export function initSockets(httpServer: HttpServer): Server {
-  io = new Server(httpServer, {
-    cors: { origin: corsOrigins, credentials: corsOrigins !== '*' },
+export function createSocketServer(httpServer: HttpServer, tables: TableManager): Server {
+  const io = new Server(httpServer, {
+    cors: { origin: corsOrigins, credentials: true },
+    // Celulares perdem conexão com frequência: recupera eventos perdidos por até 2 minutos
+    connectionStateRecovery: { maxDisconnectionDuration: 2 * 60 * 1000, skipMiddlewares: false },
+    maxHttpBufferSize: 2e6,
   });
+  tables.attach(io);
 
-  // Autenticação via JWT no handshake
+  // Autenticação via JWT de acesso no handshake
   io.use(async (socket, next) => {
     try {
-      const token = socket.handshake.auth?.token ?? socket.handshake.headers.authorization?.replace(/^Bearer /, '');
-      if (!token) return next(new Error('Token não informado'));
-      const payload = verifyToken(String(token));
-      const user = await UserModel.findById(payload.sub);
-      if (!user) return next(new Error('Usuário não encontrado'));
-      (socket.data as SocketData).user = { sub: user.id, username: user.username, role: user.role };
+      const raw = socket.handshake.auth?.token ?? String(socket.handshake.headers.authorization ?? '').replace(/^Bearer /, '');
+      if (!raw) return next(new Error('Token não informado'));
+      const payload = verifyAccessToken(String(raw));
+      const user = await User.findByPk(payload.sub);
+      if (!user || user.tokenVersion !== payload.tv) return next(new Error('Sessão inválida'));
+      const data = socket.data as SocketData;
+      data.user = { userId: user.id, username: user.username, role: user.role };
+      data.bucket ??= { tokens: RATE.capacity, last: Date.now() };
       next();
     } catch {
-      next(new Error('Token inválido'));
+      next(new Error('Token inválido ou expirado'));
     }
   });
 
   io.on('connection', (socket: Socket) => {
     const data = socket.data as SocketData;
-    console.log(`🔌 ${data.user.username} (${data.user.role}) conectou [${socket.id}]`);
 
-    // ── Mestre cria a sessão ──
-    socket.on('session:create', (_payload: unknown, rawAck?: unknown) => {
-      const ack = safeAck(rawAck ?? _payload);
-      if (data.user.role !== 'mestre') return ack({ ok: false, error: 'Apenas o Mestre pode criar sessões' });
+    // Reconexão recuperada: o socket já voltou às salas; reenvia o estado atual
+    if (socket.recovered && data.campaignId && data.masterId) {
+      const snap = tables.projectFor(data.campaignId, data.user, data.masterId);
+      if (snap) socket.emit(EVENTS.STATE, snap);
+      void tables.setConnected(data.campaignId, data.user.userId, true);
+    }
 
-      const session: GameSession = {
-        code: generateCode(),
-        hostUserId: data.user.sub,
-        hostSocketId: socket.id,
-        players: new Map(),
-        createdAt: new Date(),
-      };
-      sessions.set(session.code, session);
-      data.sessionCode = session.code;
-      socket.join(room(session.code));
-      console.log(`🎲 Sessão ${session.code} criada por ${data.user.username}`);
-      ack({ ok: true, data: sessionSnapshot(session) });
-    });
-
-    // ── Jogador entra com um personagem ──
-    socket.on('session:join', async (payload: { code?: string; characterId?: string }, rawAck?: unknown) => {
+    socket.on(EVENTS.JOIN, async (payload: unknown, rawAck: unknown) => {
       const ack = safeAck(rawAck);
       try {
-        const code = String(payload?.code ?? '').toUpperCase();
-        const session = sessions.get(code);
-        if (!session) return ack({ ok: false, error: 'Sessão não encontrada' });
-        if (!payload?.characterId) return ack({ ok: false, error: 'Escolha um personagem' });
+        const { campaignId } = joinSchema.parse(payload);
+        const actor = { userId: data.user.userId, username: data.user.username, role: data.user.role };
+        await CampaignService.access(campaignId, actor);
+        const campaign = await Campaign.findByPk(campaignId);
+        if (data.campaignId && data.campaignId !== campaignId) socket.leave(room(data.campaignId));
 
-        const character = await CharacterModel.findById(payload.characterId, data.user.sub);
-        if (!character) return ack({ ok: false, error: 'Personagem não encontrado' });
-
-        const player: SessionPlayer = {
-          userId: data.user.sub,
-          username: data.user.username,
-          characterId: character.id,
-          characterName: character.name,
-          socketId: socket.id,
-        };
-        session.players.set(player.userId, player);
-        data.sessionCode = code;
-        socket.join(room(code));
-        socket.join(`character:${character.id}`);
-
-        const { socketId: _sid, ...publicPlayer } = player;
-        socket.to(room(code)).emit('session:player-joined', publicPlayer);
-        ack({ ok: true, data: sessionSnapshot(session) });
+        const state = await tables.join(campaignId, data.user);
+        data.campaignId = campaignId;
+        data.masterId = campaign!.masterId;
+        socket.join(room(campaignId));
+        socket.join(`user:${data.user.userId}`);
+        await tables.setConnected(campaignId, data.user.userId, true);
+        ack({ ok: true, data: { seq: state.seq, state } });
+        // Os demais recebem o token novo do jogador
+        tables.broadcast(campaignId);
       } catch (err) {
-        console.error(err);
-        ack({ ok: false, error: 'Erro ao entrar na sessão' });
+        ack({ ok: false, ...commandErrorMessage(err) });
       }
     });
 
-    socket.on('session:leave', () => leaveSession(socket));
-
-    // ── Rolagem de dados (sempre no servidor) ──
-    socket.on('dice:roll', (payload: { expression?: string; label?: string; private?: boolean }, rawAck?: unknown) => {
+    socket.on(EVENTS.RESYNC, async (_payload: unknown, rawAck: unknown) => {
       const ack = safeAck(rawAck);
-      const code = data.sessionCode;
-      if (!code || !sessions.has(code)) return ack({ ok: false, error: 'Você não está em uma sessão' });
+      if (!data.campaignId || !data.masterId) return ack({ ok: false, error: 'Entre em uma mesa primeiro' });
+      const snap = tables.projectFor(data.campaignId, data.user, data.masterId);
+      if (!snap) return ack({ ok: false, error: 'Mesa não carregada' });
+      ack({ ok: true, data: snap });
+    });
+
+    socket.on(EVENTS.COMMAND, async (payload: unknown, rawAck: unknown) => {
+      const ack = safeAck(rawAck);
+      if (!data.campaignId || !data.masterId) return ack({ ok: false, error: 'Entre em uma mesa primeiro' });
+      if (!allow(data)) return ack({ ok: false, error: 'Calma, herói! Muitos comandos por segundo.', code: 'rate_limited' });
+      const parsed = commandPayloadSchema.safeParse(payload);
+      if (!parsed.success) {
+        return ack({ ok: false, error: `Comando inválido: ${parsed.error.issues.map((i) => `${i.path.join('.')} ${i.message}`).join('; ')}`, code: 'invalid' });
+      }
       try {
-        const result = {
-          ...rollDice(String(payload?.expression ?? '1d20')),
-          label: payload?.label ?? null,
-          by: data.user.username,
-          at: new Date().toISOString(),
-        };
-        const session = sessions.get(code)!;
-        if (payload?.private) {
-          // Rolagem secreta: só quem rolou e o Mestre veem
-          io!.to(session.hostSocketId).emit('dice:result', { ...result, private: true });
-          if (socket.id !== session.hostSocketId) socket.emit('dice:result', { ...result, private: true });
-        } else {
-          io!.to(room(code)).emit('dice:result', result);
-        }
-        ack({ ok: true, data: result });
+        const actor = tables.actorOf(data.user, data.masterId);
+        const seq = await tables.execute(data.campaignId, actor, parsed.data.command, `${data.user.userId}:${parsed.data.commandId}`);
+        ack({ ok: true, data: { seq } });
       } catch (err) {
-        ack({ ok: false, error: (err as Error).message });
+        ack({ ok: false, ...commandErrorMessage(err) });
       }
     });
 
-    // ── Chat da mesa ──
-    socket.on('chat:message', (payload: { text?: string }) => {
-      const code = data.sessionCode;
-      const text = String(payload?.text ?? '').trim().slice(0, 1000);
-      if (!code || !text) return;
-      io!.to(room(code)).emit('chat:message', { from: data.user.username, text, at: new Date().toISOString() });
+    socket.on(EVENTS.LEAVE, () => {
+      if (!data.campaignId) return;
+      socket.leave(room(data.campaignId));
+      void tables.setConnected(data.campaignId, data.user.userId, false);
+      data.campaignId = undefined;
     });
 
-    // ── Mestre controla a cena (narração, mapa, música, etc.) ──
-    socket.on('host:scene', (payload: unknown) => {
-      const code = data.sessionCode;
-      const session = code ? sessions.get(code) : undefined;
-      if (!session || session.hostSocketId !== socket.id) return;
-      socket.to(room(session.code)).emit('host:scene', payload);
-    });
-
-    socket.on('disconnect', () => {
-      console.log(`🔌 ${data.user.username} desconectou`);
-      leaveSession(socket);
+    socket.on('disconnect', async () => {
+      if (!data.campaignId) return;
+      const campaignId = data.campaignId;
+      // Outro dispositivo do mesmo usuário ainda conectado?
+      const others = (await io.in(room(campaignId)).fetchSockets()).some((s) => s.id !== socket.id && (s.data as SocketData).user?.userId === data.user.userId);
+      if (!others) await tables.setConnected(campaignId, data.user.userId, false);
     });
   });
 
   return io;
-}
-
-function leaveSession(socket: Socket) {
-  const data = socket.data as SocketData;
-  const code = data.sessionCode;
-  if (!code) return;
-  const session = sessions.get(code);
-  data.sessionCode = undefined;
-  socket.leave(room(code));
-  if (!session) return;
-
-  if (session.hostSocketId === socket.id) {
-    // Mestre saiu: encerra a sessão para todos
-    io?.to(room(code)).emit('session:closed', { code, reason: 'O Mestre encerrou a sessão' });
-    io?.in(room(code)).socketsLeave(room(code));
-    sessions.delete(code);
-    console.log(`🛑 Sessão ${code} encerrada`);
-    return;
-  }
-
-  const player = session.players.get(data.user.sub);
-  if (player?.socketId === socket.id) {
-    session.players.delete(data.user.sub);
-    socket.leave(`character:${player.characterId}`);
-    io?.to(room(code)).emit('session:player-left', { userId: player.userId, username: player.username });
-  }
-}
-
-/** Chamado pelo controller quando uma ficha é atualizada via REST. */
-export function broadcastCharacterUpdate(character: { id: string; userId: string }) {
-  if (!io) return;
-  for (const session of sessions.values()) {
-    const player = session.players.get(character.userId);
-    if (player?.characterId === character.id) {
-      io.to(room(session.code)).emit('character:updated', character);
-    }
-  }
-}
-
-export function getActiveSessions() {
-  return [...sessions.values()].map(sessionSnapshot);
 }

@@ -1,0 +1,35 @@
+{
+  "name": "mesa-rpg",
+  "version": "0.2.0-alpha",
+  "private": true,
+  "description": "RPG de mesa tático com acesso web — Host no PC do Mestre, jogadores no navegador/celular",
+  "workspaces": [
+    "shared",
+    "client-common",
+    "server",
+    "client-host",
+    "client-web"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "build:shared": "npm run build -w shared",
+    "build": "npm run build:shared && npm run build -w server && npm run build -w client-host && npm run build -w client-web",
+    "dev": "npm run build:shared && concurrently -k -n shared,server,host,web -c gray,green,magenta,cyan \"npm run watch -w shared\" \"npm run dev -w server\" \"npm run dev -w client-host\" \"npm run dev -w client-web\"",
+    "start": "npm run start -w server",
+    "migrate": "npm run build:shared && npm run migrate -w server",
+    "seed": "npm run seed -w server",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "test": "npm run build:shared && npm test -w shared && npm test -w server",
+    "typecheck": "npm run build:shared && npm run typecheck -w server && npm run typecheck -w client-common && npm run typecheck -w client-host && npm run typecheck -w client-web"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "concurrently": "^10.0.6",
+    "jest": "^30.5.2",
+    "ts-jest": "^29.4.15",
+    "typescript": "~5.9.3"
+  }
+}

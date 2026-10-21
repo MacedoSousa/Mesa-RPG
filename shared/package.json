@@ -1,0 +1,17 @@
+{
+  "name": "@mesa/shared",
+  "version": "0.2.0-alpha",
+  "private": true,
+  "description": "Motor de regras, conteúdo e protocolo compartilhados entre server e clientes",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "watch": "tsc -w -p tsconfig.json --preserveWatchOutput",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "jest"
+  },
+  "dependencies": {
+    "zod": "^3.24.2"
+  }
+}

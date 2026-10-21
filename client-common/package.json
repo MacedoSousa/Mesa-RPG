@@ -1,0 +1,21 @@
+{
+  "name": "@mesa/client-common",
+  "version": "0.2.0-alpha",
+  "private": true,
+  "description": "Código de navegador compartilhado pelos clientes Host e Web (API, socket, mapa PixiJS, UI base)",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@mesa/shared": "*",
+    "pixi.js": "^8.22.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "socket.io-client": "^4.8.1",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0"
+  }
+}
