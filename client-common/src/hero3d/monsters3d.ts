@@ -3,8 +3,8 @@
  * Humanoides usam os esqueletos do KayKit com cores e adornos; feras são criaturas procedurais.
  */
 import { MONSTERS } from '@mesa/shared';
-import { buildCreatureFigure, bullHead, cyclopsEye, flameHair, glowingEyes, serpentTail, snakeHair, tusks, wings, type CreatureSpec } from './creatures';
-import { buildRigFigure, mix, skinCells, type AtlasChange, type Figure, type ProcPart, type RigParts, type RigSpec } from './figure';
+import { buildCreatureFigure, bullHead, cyclopsEye, featherTail, flameHair, glowingEyes, serpentTail, snakeHair, talons, tusks, wings, type CreatureSpec } from './creatures';
+import { buildRigFigure, skinCells, type AtlasChange, type Figure, type ProcPart, type RigParts, type RigSpec } from './figure';
 
 type Src = CanvasImageSource & { width: number; height: number };
 
@@ -35,7 +35,8 @@ const RIG_MONSTERS: Record<string, RigSpec> = {
   },
   ciclope_selvagem: {
     body: 'barbarian', headgear: false, scale: { h: 1.65, b: 1.2 }, style: 'brute',
-    recolor: (src) => [...colors({ skin: '#8a9bb0', hair: '#3a2a20', outfit: '#5a4a32', outfitCells: [[0, 1], [1, 1], [2, 2]] })(src), { cells: [[2, 0]], color: mix('#8a9bb0', '#000000', 0.1) }],
+    hideEyes: true,
+    recolor: colors({ skin: '#8a9bb0', hair: '#3a2a20', outfit: '#5a4a32', outfitCells: [[0, 1], [1, 1], [2, 2]] }),
     weapons: { mainHand: 'clava' },
     adorn: parts((p) => cyclopsEye(p, '#8a6a10')),
   },
@@ -70,7 +71,7 @@ const RIG_MONSTERS: Record<string, RigSpec> = {
   harpia: {
     body: 'rogue', headgear: false, style: 'monk',
     recolor: colors({ skin: '#d9b38c', hair: '#5a3a2a', eyes: '#d4a020', outfit: '#6b4f2a', outfitCells: [[0, 1], [1, 1], [1, 2]] }),
-    adorn: parts((p) => wings(p, 'penas', '#7a5a3a')),
+    adorn: parts((p) => wings(p, 'penas', '#8a6a4a', '#2e2014'), (p) => featherTail(p, '#7a5a3a'), (p) => talons(p)),
   },
   equidna: {
     body: 'mage', headgear: false, hide: /_Leg/, scale: { h: 1.35, b: 1.1 }, style: 'caster',

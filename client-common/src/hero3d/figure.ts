@@ -293,12 +293,34 @@ export async function loadWeapons(cfg: LoadoutSpec): Promise<AttachedWeapon[]> {
 
 // ───────────── Figuras com esqueleto (KayKit) ─────────────
 
-export interface HeadMetrics { top: number; front: number; width: number }
+/**
+ * Medidas da cabeça no espaço do "anchor" da cabeça (alinhado ao modelo: +Y para cima,
+ * +Z para a frente, origem no pivô do osso). eyes = centro de cada olho do KayKit.
+ */
+export interface HeadMetrics {
+  top: number;
+  front: number;
+  width: number;
+  /** Base da cabeça (queixo/pescoço), relativo ao pivô. */
+  bottom: number;
+  /** Nuca (z mínimo), relativo ao pivô. */
+  back: number;
+  eyes: { l: THREE.Vector3; r: THREE.Vector3; size: number } | null;
+}
 
 export interface RigParts {
   model: THREE.Object3D;
   bones: Record<string, THREE.Object3D>;
   head: HeadMetrics | null;
+  /**
+   * Grupo preso ao osso, mas com eixos do modelo (+Y cima, +Z frente) e sem a escala do osso.
+   * Os ossos do KayKit têm eixos e pivôs próprios; prender peças aqui evita que saiam tortas.
+   */
+  anchor: (bone: string) => THREE.Group | null;
+  /** Converte um ponto do espaço do modelo para o espaço do anchor do osso. */
+  toAnchor: (bone: string, p: THREE.Vector3) => THREE.Vector3;
+  /** Caixa da cabeça no espaço do modelo. */
+  headBox: THREE.Box3 | null;
   /** Escala do mundo dos ossos (para criar peças em metros). */
   boneScale: number;
   /** Caixa do modelo (espaço do modelo, antes da escala da figura). */
@@ -323,6 +345,8 @@ export interface RigSpec {
   adorn?: (p: RigParts) => ProcPart[] | void;
   /** Olhos brilhando (malha "Eyes" dos esqueletos ganha emissivo). */
   glowEyes?: string;
+  /** Some com os olhos do modelo (ex.: ciclope, que ganha um olho só). */
+  hideEyes?: boolean;
   /** Clipes por ação; o resto segue o padrão. */
   clips?: Partial<Record<'idle' | 'walk' | 'hit' | 'death', string>> & { attack?: string[] };
   /** Tipo de ataque padrão quando não definido em clips.attack. */
@@ -418,15 +442,85 @@ export async function buildRigFigure(spec: RigSpec): Promise<Figure & { grip: Gr
   const box = new THREE.Box3();
   model.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && o.visible && (m as THREE.SkinnedMesh).isSkinnedMesh) box.expandByObject(o, true); });
   if (box.isEmpty()) box.setFromObject(model, true);
+  // Âncoras alinhadas ao modelo (o modelo ainda está na pose de repouso, sem escala)
+  const anchors = new Map<string, THREE.Group>();
+  const anchor = (name: string) => {
+    const bone = bones[name];
+    if (!bone) return null;
+    let g = anchors.get(name);
+    if (!g) {
+      bone.updateWorldMatrix(true, false);
+      g = new THREE.Group();
+      g.quaternion.copy(bone.getWorldQuaternion(new THREE.Quaternion()).invert());
+      const ws = bone.getWorldScale(new THREE.Vector3());
+      g.scale.set(1 / (ws.x || 1), 1 / (ws.y || 1), 1 / (ws.z || 1));
+      bone.add(g);
+      anchors.set(name, g);
+    }
+    return g;
+  };
+  const toAnchor = (name: string, p: THREE.Vector3) => {
+    const bone = bones[name];
+    return bone ? p.clone().sub(bone.getWorldPosition(new THREE.Vector3())) : p.clone();
+  };
+
+  // Cabeça: caixa e olhos (no KayKit os olhos usam a faixa (2,0) do atlas)
   let head: HeadMetrics | null = null;
+  let headBox: THREE.Box3 | null = null;
   if (bones.head && headMesh) {
     const hm = headMesh as THREE.SkinnedMesh;
     hm.geometry.computeBoundingBox();
-    const hbox = hm.geometry.boundingBox!.clone().applyMatrix4(hm.matrixWorld);
-    const bp = new THREE.Vector3().setFromMatrixPosition(bones.head.matrixWorld);
-    head = { top: hbox.max.y - bp.y, front: hbox.max.z - bp.z, width: hbox.max.x - hbox.min.x };
+    headBox = hm.geometry.boundingBox!.clone().applyMatrix4(hm.matrixWorld);
+    const bp = bones.head.getWorldPosition(new THREE.Vector3());
+    const pos = hm.geometry.getAttribute('position') as THREE.BufferAttribute;
+    const uv = hm.geometry.getAttribute('uv') as THREE.BufferAttribute | undefined;
+    const L: number[] = [], R: number[] = [];
+    if (uv) for (let i = 0; i < uv.count; i++) {
+      const u = uv.getX(i), v = uv.getY(i);
+      if (u >= 0.25 && u < 0.375 && v < 0.25) (pos.getX(i) < 0 ? L : R).push(i);
+    }
+    const centroid = (ids: number[]) => {
+      const c = new THREE.Vector3();
+      for (const i of ids) c.add(new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i)));
+      return c.divideScalar(ids.length).applyMatrix4(hm.matrixWorld);
+    };
+    let eyes: HeadMetrics['eyes'] = null;
+    if (L.length && R.length) {
+      const l = centroid(L), r = centroid(R);
+      eyes = { l: l.clone().sub(bp), r: r.clone().sub(bp), size: Math.abs(r.x - l.x) * 0.13 };
+      if (spec.hideEyes) {
+        // Achata cada olho num ponto atrás da superfície: some sem deixar buraco
+        const geo = hm.geometry.clone();
+        const gp = geo.getAttribute('position') as THREE.BufferAttribute;
+        const inv = hm.matrixWorld.clone().invert();
+        for (const [ids, c] of [[L, l], [R, r]] as const) {
+          const local = c.clone().applyMatrix4(inv);
+          for (const i of ids) gp.setXYZ(i, local.x, local.y, local.z - 0.03);
+        }
+        // Sobrancelhas (faixa do cabelo logo acima de cada olho) também somem
+        let eyeTop = -Infinity, eyeZ = -Infinity, eyeX = 0;
+        for (const i of [...L, ...R]) { eyeTop = Math.max(eyeTop, pos.getY(i)); eyeZ = Math.max(eyeZ, pos.getZ(i)); eyeX = Math.max(eyeX, Math.abs(pos.getX(i))); }
+        const brows: number[] = [];
+        for (let i = 0; i < uv!.count; i++) {
+          const u = uv!.getX(i), v = uv!.getY(i);
+          if (!(u >= 0.125 && u < 0.25 && v < 0.25)) continue;
+          const y = pos.getY(i), z = pos.getZ(i), x = Math.abs(pos.getX(i));
+          if (y > eyeTop - 0.02 && y < eyeTop + 0.17 && z > eyeZ - 0.16 && x < eyeX + 0.14) brows.push(i);
+        }
+        if (brows.length && brows.length < 220) {
+          const bc = new THREE.Vector3();
+          for (const i of brows) bc.add(new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i)));
+          bc.divideScalar(brows.length);
+          for (const i of brows) gp.setXYZ(i, bc.x, bc.y, bc.z - 0.05);
+        }
+        gp.needsUpdate = true;
+        geo.userData.own = true;
+        hm.geometry = geo;
+      }
+    }
+    head = { top: headBox.max.y - bp.y, front: headBox.max.z - bp.z, width: headBox.max.x - headBox.min.x, bottom: headBox.min.y - bp.y, back: headBox.min.z - bp.z, eyes };
   }
-  const parts = spec.adorn?.({ model, bones, head, boneScale, box }) ?? [];
+  const parts = spec.adorn?.({ model, bones, head, boneScale, box, anchor, toAnchor, headBox }) ?? [];
 
   const root = new THREE.Group();
   root.add(model);

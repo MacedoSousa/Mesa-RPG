@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { DIVINITIES, baseItemKey } from '@mesa/shared';
 import type { BodyKey, HeroLook, PortraitSpec } from '../index';
-import { buildRigFigure, mat, mix, skinCells, type AtlasChange, type Figure, type HeroAction, type RigSpec } from './figure';
+import { buildRigFigure, markOwn, mat, mix, skinCells, type AtlasChange, type Figure, type HeadMetrics, type HeroAction, type RigSpec } from './figure';
 import { cyclopsEyeMesh } from './creatures';
 import { buildMonsterFigure } from './monsters3d';
 
@@ -59,25 +59,33 @@ export function heroRigSpec(cfg: HeroConfig): RigSpec {
   const body = heroBody(cfg);
   const isCyclops = cfg.race === 'ciclope' || spec?.race === 'ciclope';
   const heavy = ['armadura_placas', 'cota_de_malha', 'meia_armadura'].includes(baseItemKey(cfg.equipment.armor ?? ''));
+  const headgearOn = look.headgear ?? (body === 'knight' ? heavy : body !== 'barbarian');
+  const covered = body === 'rogue_hooded' || headgearOn;
   const h = look.height ?? (isCyclops ? 1.12 : cfg.race === 'satiro' ? 0.95 : 1);
   const b = look.build ?? (cfg.classKey === 'barbaro' || isCyclops ? 1.06 : 1);
   return {
     body,
-    headgear: look.headgear ?? (body === 'knight' ? heavy : body !== 'barbarian'),
+    hideEyes: isCyclops,
+    headgear: headgearOn,
     scale: { h, b },
     style: ['mago', 'feiticeiro', 'bruxo', 'druida', 'clerigo'].includes(cfg.classKey) ? 'caster' : cfg.classKey === 'monge' ? 'monk' : undefined,
     weapons: { ...cfg.equipment, inventory: cfg.inventory, wandIfEmpty: ['mago', 'feiticeiro', 'bruxo'].includes(cfg.classKey) },
     recolor: (src) => {
       const changes: AtlasChange[] = [];
       if (spec?.skin) changes.push({ cells: skinCells(src), color: spec.skin });
-      if (spec?.hairColor) changes.push({ cells: [[1, 0]], color: spec.hairColor });
+      // Cabeça raspada: o cabelo vira uma sombra de barba por fazer
+      if (spec?.hairColor) changes.push({ cells: [[1, 0]], color: spec.hair === 'raspado' && spec.skin ? mix(spec.skin, spec.hairColor, 0.3) : spec.hairColor });
       if (isCyclops && spec?.skin) changes.push({ cells: [[2, 0]], color: mix(spec.skin, '#000000', 0.1) });
       else if (spec?.eyeColor) changes.push({ cells: [[2, 0]], color: mix(spec.eyeColor, '#000000', 0.55) });
       if (look.outfit) changes.push({ cells: OUTFIT_CELLS[body], color: look.outfit });
       return changes;
     },
     adorn: (p) => {
-      if (p.bones.head && p.head) p.bones.head.add(headAdornments(spec, cfg.race, p.head, body === 'rogue_hooded'));
+      const a = p.anchor('head');
+      if (a && p.head) {
+        a.add(headAdornments(spec, cfg.race, p.head, body === 'rogue_hooded'));
+        if (spec) a.add(hairAndFace(spec, p.head, { covered, beardBaked: body === 'barbarian' }));
+      }
     },
   };
 }
@@ -87,7 +95,83 @@ export function buildHeroFigure(cfg: HeroConfig) {
 }
 
 /** Chifres de sátiro, coroa de folhas, olho de ciclope, louros… presos ao osso da cabeça. */
-function headAdornments(spec: PortraitSpec | null, race: string, head: { top: number; front: number; width: number }, hooded: boolean) {
+/**
+ * O que o jogador escolheu no rosto 2D também aparece no 3D: penteado (rabo, coque, tranças,
+ * black power, longo, arrepiado, cacheado), barba e acessórios (elmo grego, brincos, óculos).
+ */
+function hairAndFace(spec: PortraitSpec, head: HeadMetrics, o: { covered: boolean; beardBaked: boolean }) {
+  const g = new THREE.Group();
+  const hair = mat(spec.hairColor ?? '#3a2416', { roughness: 0.85 });
+  const eyeY = head.eyes ? (head.eyes.l.y + head.eyes.r.y) / 2 : head.top * 0.45;
+  const cx = head.eyes ? (head.eyes.l.x + head.eyes.r.x) / 2 : 0;
+  const W = head.width;
+  const add = (m: THREE.Mesh, x: number, y: number, z: number) => { m.position.set(x, y, z); m.castShadow = true; g.add(m); return m; };
+  const backZ = head.back;
+  switch (spec.hair) {
+    case 'rabo': {
+      const curve = new THREE.CatmullRomCurve3([new THREE.Vector3(cx, head.top - 0.18, backZ + 0.08), new THREE.Vector3(cx, head.top - 0.3, backZ - 0.12), new THREE.Vector3(cx, head.top - 0.62, backZ - 0.16), new THREE.Vector3(cx, head.top - 0.85, backZ - 0.06)]);
+      g.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 12, 0.075, 7), hair));
+      add(new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.02, 5, 10), mat('#c0392b')), cx, head.top - 0.3, backZ - 0.1).rotation.x = 1.2;
+      break;
+    }
+    case 'coque':
+      if (!o.covered) add(new THREE.Mesh(new THREE.SphereGeometry(W * 0.2, 10, 8), hair), cx, head.top + 0.02, backZ * 0.35);
+      break;
+    case 'trancas':
+      for (const s of [-1, 1]) for (let i = 0; i < 6; i++) add(new THREE.Mesh(new THREE.SphereGeometry(0.055 - i * 0.003, 6, 5), hair), cx + s * W * 0.44, eyeY - 0.05 - i * 0.1, -0.02 - i * 0.015);
+      break;
+    case 'black_power':
+      if (!o.covered) { const m = add(new THREE.Mesh(new THREE.IcosahedronGeometry(W * 0.62, 1), hair), cx, head.top - 0.12, backZ * 0.3); m.scale.set(1.05, 0.85, 1); }
+      break;
+    case 'longo': {
+      const m = add(new THREE.Mesh(new THREE.BoxGeometry(W * 0.92, 0.75, 0.12), hair), cx, head.top - 0.55, backZ - 0.01);
+      m.rotation.x = 0.12;
+      break;
+    }
+    case 'arrepiado':
+      if (!o.covered) for (let i = 0; i < 7; i++) { const a = -0.9 + i * 0.3; const c = add(new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.22, 5), hair), cx + Math.sin(a) * W * 0.32, head.top + 0.02, Math.cos(a) * 0.12 - 0.05); c.rotation.z = -a * 0.6; }
+      break;
+    case 'cacheado':
+      if (!o.covered) for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; add(new THREE.Mesh(new THREE.SphereGeometry(0.085, 6, 5), hair), cx + Math.sin(a) * W * 0.38, head.top - 0.06 + (i % 2) * 0.05, Math.cos(a) * W * 0.32 - 0.04); }
+      break;
+  }
+  // Barba
+  if (!o.beardBaked && spec.beard && spec.beard !== 'nenhuma') {
+    const beard = mat(spec.hairColor ?? '#3a2416', { roughness: 0.9 });
+    const front = head.front;
+    if (spec.beard === 'cheia' || spec.beard === 'curta') {
+      const full = spec.beard === 'cheia';
+      const b = add(new THREE.Mesh(new THREE.SphereGeometry(W * 0.3, 10, 6, 0, Math.PI * 2, Math.PI * 0.5, Math.PI * 0.5), beard), cx, eyeY - 0.22, front - 0.17);
+      b.scale.set(1.0, full ? 1.05 : 0.6, 0.7);
+      if (full) add(new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.18, 6), beard), cx, eyeY - 0.47, front - 0.05).rotation.x = Math.PI;
+    }
+    if (spec.beard === 'cavanhaque') add(new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.16, 6), beard), cx, eyeY - 0.36, front - 0.02).rotation.x = Math.PI;
+    if (spec.beard === 'bigode' || spec.beard === 'cavanhaque') {
+      for (const s of [-1, 1]) { const m = add(new THREE.Mesh(new THREE.CapsuleGeometry(0.025, 0.1, 3, 6), beard), cx + s * 0.06, eyeY - 0.17, front + 0.005); m.rotation.z = s * 1.2; }
+    }
+  }
+  // Acessórios
+  const acc = spec.accessory;
+  if (acc === 'brinco') for (const s of [-1, 1]) add(new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.009, 5, 10), mat('#d4a020', { metalness: 0.9, roughness: 0.2 })), cx + s * W * 0.5, eyeY - 0.12, -0.02).rotation.y = Math.PI / 2;
+  if (acc === 'oculos' && head.eyes) {
+    const frame = mat('#2a2a2a', { metalness: 0.4 });
+    for (const e of [head.eyes.l, head.eyes.r]) add(new THREE.Mesh(new THREE.TorusGeometry(head.eyes.size * 1.6, 0.015, 5, 16), frame), e.x, e.y, e.z + 0.035);
+    add(new THREE.Mesh(new THREE.BoxGeometry(Math.abs(head.eyes.r.x - head.eyes.l.x) * 0.35, 0.012, 0.012), frame), cx, eyeY + 0.01, head.eyes.l.z + 0.035);
+  }
+  if (acc === 'elmo' && !o.covered) {
+    // Elmo coríntio: cúpula de bronze e crista vermelha
+    const bronze = mat('#c98f3a', { metalness: 0.75, roughness: 0.3 });
+    const dome = add(new THREE.Mesh(new THREE.SphereGeometry(W * 0.56, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.5), bronze), cx, head.top - 0.3, -0.03);
+    dome.scale.set(1, 0.95, 1.05);
+    const crest = add(new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.2, W * 1.0), mat('#b91c1c', { roughness: 0.9 })), cx, head.top + 0.02, -0.06);
+    crest.scale.y = 1.2;
+    for (const s of [-1, 1]) add(new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.22, 0.2), bronze), cx + s * W * 0.5, eyeY - 0.05, 0.08);
+  }
+  markOwn(g);
+  return g;
+}
+
+function headAdornments(spec: PortraitSpec | null, race: string, head: HeadMetrics, hooded: boolean) {
   const g = new THREE.Group();
   const feature = spec?.race ?? '';
   // Debaixo de um capuz não cabem coroas nem diademas
