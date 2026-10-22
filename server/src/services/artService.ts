@@ -16,6 +16,8 @@ const badRequest = (msg: string) => new HttpError(400, msg);
 
 export const ART_DIR = path.resolve(env.ART_DIR ?? path.join(__dirname, '../../data/art'));
 const MONSTER_DIR = path.join(ART_DIR, 'monsters');
+const MAP_DIR = path.join(ART_DIR, 'maps');
+const UUID_RE = /^[0-9a-f-]{8,40}$/i;
 const KEY_RE = /^[a-z0-9_]{1,40}$/;
 
 export type JobStatus = 'na_fila' | 'gerando' | 'pronto' | 'erro';
@@ -112,6 +114,64 @@ export function fillWorkflow(template: string, o: { prompt: string; negative: st
   return JSON.parse(text) as Record<string, unknown>;
 }
 
+/** Descrição do tipo de mapa para o pintor (o desenho da mesa vira o "rascunho"). */
+const MAP_SUBJECT: Record<string, string> = {
+  floresta: 'dense ancient greek forest clearing, pine trees, dirt paths, mossy rocks',
+  caverna: 'dark rocky cave with stalagmites and puddles',
+  submundo: 'underworld cavern, black rock, glowing green ghost fire, river styx',
+  templo: 'ruined ancient greek marble temple, columns, mosaic floor, braziers',
+  rio: 'river crossing with wooden bridge, reeds, wet stones',
+  praia: 'sandy beach with waves, driftwood, rocks, ocean foam',
+  interior: 'interior of a building, wooden floor planks, furniture, rugs',
+  estrada: 'country road with asphalt, grass verges, fences',
+  acampamento: 'summer camp with cabins, lake, forest, archery range',
+  olimpo: 'mount olympus palace, white marble, golden details, clouds',
+};
+
+export function mapPrompt(kind: string | undefined, mood: string | undefined, style = 'epico') {
+  const subject = MAP_SUBJECT[kind ?? ''] ?? 'fantasy battle map terrain';
+  // A mesa escurece o mapa sozinha à noite/no Submundo: aqui a luz é sempre uniforme
+  const light = mood === 'submundo' ? 'even lighting, faint green ghostly glow' : 'even soft daylight, no strong shadows';
+  const st = (ART_STYLES[style] ?? ART_STYLES.epico).prompt;
+  return `top-down orthographic tabletop RPG battle map, ${subject}, ${light}, seen from directly above, hand painted textures, highly detailed, ${st}`;
+}
+export const MAP_NEGATIVE = 'perspective, horizon, sky, characters, people, creatures, text, letters, grid numbers, watermark, frame, border, blurry, lowres';
+
+/** img2img: o mapa desenhado pela mesa é o rascunho; a IA repinta mantendo o traçado (denoise baixo). */
+export function img2imgWorkflow(o: { checkpoint: string; image: string; width: number; height: number; prompt: string; negative: string; seed: number; denoise: number; quality?: Quality }) {
+  const p = profileFor(o.checkpoint);
+  const steps = Math.max(4, Math.round(p.steps * QUALITY[o.quality ?? 'boa']));
+  const wf: Record<string, { class_type: string; inputs: Record<string, unknown> }> = {
+    '1': { class_type: 'LoadImage', inputs: { image: o.image } },
+    '2': { class_type: 'ImageScale', inputs: { upscale_method: 'lanczos', width: o.width, height: o.height, crop: 'disabled', image: ['1', 0] } },
+    '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: o.checkpoint } },
+    '3': { class_type: 'VAEEncode', inputs: { pixels: ['2', 0], vae: ['4', 2] } },
+    '6': { class_type: 'CLIPTextEncode', inputs: { text: o.prompt, clip: ['4', 1] } },
+    '7': { class_type: 'CLIPTextEncode', inputs: { text: p.negative ? o.negative : '', clip: ['4', 1] } },
+    '5': {
+      class_type: 'KSampler',
+      inputs: { seed: o.seed, steps, cfg: p.cfg, sampler_name: p.sampler, scheduler: p.scheduler, denoise: o.denoise, model: ['4', 0], positive: ['6', 0], negative: ['7', 0], latent_image: ['3', 0] },
+    },
+    '8': { class_type: 'VAEDecode', inputs: { samples: ['5', 0], vae: ['4', 2] } },
+    '9': { class_type: 'SaveImage', inputs: { filename_prefix: 'mesa_rpg/mapa', images: ['8', 0] } },
+  };
+  if (p.guidance) {
+    wf['11'] = { class_type: 'FluxGuidance', inputs: { conditioning: ['6', 0], guidance: p.guidance } };
+    wf['5'].inputs.positive = ['11', 0];
+  }
+  return wf;
+}
+
+/** Tamanho de trabalho do modelo mantendo a proporção do mapa (múltiplos de 64). */
+export function workSize(w: number, h: number, base: number) {
+  const area = base * base;
+  const ratio = w / h;
+  const ww = Math.sqrt(area * ratio);
+  const hh = ww / ratio;
+  const r64 = (v: number) => Math.max(256, Math.round(v / 64) * 64);
+  return { width: r64(ww), height: r64(hh) };
+}
+
 async function comfy(pathname: string, init?: RequestInit, timeoutMs = 10_000): Promise<Response> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -154,6 +214,38 @@ async function pickCheckpoint(wanted?: string): Promise<string> {
   return list.find((n) => /xl/i.test(n)) ?? list[0];
 }
 
+/** Envia uma imagem para a pasta input do ComfyUI. */
+async function uploadToComfy(buf: Buffer, name: string): Promise<string> {
+  const form = new FormData();
+  form.append('image', new Blob([new Uint8Array(buf)], { type: 'image/png' }), name);
+  form.append('overwrite', 'true');
+  const r = (await (await comfy('/upload/image', { method: 'POST', body: form }, 30_000)).json()) as { name?: string; subfolder?: string };
+  if (!r.name) throw new Error('O ComfyUI não aceitou a imagem do mapa');
+  return r.subfolder ? `${r.subfolder}/${r.name}` : r.name;
+}
+
+/** Envia um workflow e espera a primeira imagem pronta. */
+async function queueAndWait(workflow: Record<string, unknown>): Promise<Buffer> {
+  const clientId = randomUUID();
+  const queued = (await (await comfy('/prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: workflow, client_id: clientId }) })).json()) as { prompt_id?: string; error?: unknown; node_errors?: unknown };
+  if (!queued.prompt_id) throw new Error(`ComfyUI recusou o workflow: ${JSON.stringify(queued.error ?? queued.node_errors).slice(0, 300)}`);
+  const deadline = Date.now() + env.COMFYUI_TIMEOUT_SECONDS * 1000;
+  while (Date.now() < deadline) {
+    await sleep(env.NODE_ENV === 'test' ? 20 : 1500);
+    const hist = (await (await comfy(`/history/${queued.prompt_id}`)).json()) as Record<string, { outputs?: Record<string, { images?: { filename: string; subfolder: string; type: string }[] }>; status?: { status_str?: string } }>;
+    const entry = hist[queued.prompt_id];
+    if (!entry) continue;
+    if (entry.status?.status_str === 'error') throw new Error('O ComfyUI deu erro ao gerar a imagem (veja o terminal do ComfyUI).');
+    const all = Object.values(entry.outputs ?? {}).flatMap((n) => n.images ?? []);
+    const img = all.find((i) => i.type === 'output') ?? all[0];
+    if (!img) continue;
+    const q = new URLSearchParams({ filename: img.filename, subfolder: img.subfolder ?? '', type: img.type ?? 'output' });
+    const res = await comfy(`/view?${q}`, undefined, 60_000);
+    return Buffer.from(await res.arrayBuffer());
+  }
+  throw new Error('A geração demorou demais. Aumente COMFYUI_TIMEOUT_SECONDS ou use menos passos.');
+}
+
 async function runComfy(o: { prompt: string; negative: string; seed: number; checkpoint?: string; steps?: number; quality?: Quality; lora?: string | null; style?: string }): Promise<Buffer> {
   const checkpoint = await pickCheckpoint(o.checkpoint);
   // Estilo pixel art usa a LoRA de pixel se ela estiver instalada (e o modelo for SDXL)
@@ -163,24 +255,7 @@ async function runComfy(o: { prompt: string; negative: string; seed: number; che
   const workflow = env.COMFYUI_WORKFLOW
     ? fillWorkflow(readFileSync(env.COMFYUI_WORKFLOW, 'utf8'), { ...o, checkpoint })
     : defaultWorkflow({ ...o, checkpoint, lora });
-  const clientId = randomUUID();
-  const queued = (await (await comfy('/prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: workflow, client_id: clientId }) })).json()) as { prompt_id?: string; error?: unknown; node_errors?: unknown };
-  if (!queued.prompt_id) throw new Error(`ComfyUI recusou o workflow: ${JSON.stringify(queued.error ?? queued.node_errors).slice(0, 300)}`);
-
-  const deadline = Date.now() + env.COMFYUI_TIMEOUT_SECONDS * 1000;
-  while (Date.now() < deadline) {
-    await sleep(env.NODE_ENV === 'test' ? 20 : 1500);
-    const hist = (await (await comfy(`/history/${queued.prompt_id}`)).json()) as Record<string, { outputs?: Record<string, { images?: { filename: string; subfolder: string; type: string }[] }>; status?: { status_str?: string; messages?: unknown[] } }>;
-    const entry = hist[queued.prompt_id];
-    if (!entry) continue;
-    if (entry.status?.status_str === 'error') throw new Error('O ComfyUI deu erro ao gerar a imagem (veja o terminal do ComfyUI).');
-    const img = Object.values(entry.outputs ?? {}).flatMap((n) => n.images ?? []).find((i) => i.type === 'output') ?? Object.values(entry.outputs ?? {}).flatMap((n) => n.images ?? [])[0];
-    if (!img) continue;
-    const q = new URLSearchParams({ filename: img.filename, subfolder: img.subfolder ?? '', type: img.type ?? 'output' });
-    const res = await comfy(`/view?${q}`, undefined, 60_000);
-    return Buffer.from(await res.arrayBuffer());
-  }
-  throw new Error('A geração demorou demais. Aumente COMFYUI_TIMEOUT_SECONDS ou use menos passos.');
+  return queueAndWait(workflow);
 }
 
 // ───────────── Arquivos ─────────────
@@ -206,6 +281,21 @@ function save(key: string, buf: Buffer, meta: Record<string, unknown>) {
   mkdirSync(MONSTER_DIR, { recursive: true });
   writeFileSync(fileFor(key), buf);
   writeFileSync(path.join(MONSTER_DIR, `${key}.json`), JSON.stringify({ ...meta, savedAt: new Date().toISOString() }, null, 2));
+}
+
+function mapFile(campaignId: string) {
+  return path.join(MAP_DIR, `${campaignId}.png`);
+}
+function mapInfo(campaignId: string): { url: string; signature: string; width: number; height: number; style?: string } | null {
+  const f = mapFile(campaignId);
+  const meta = path.join(MAP_DIR, `${campaignId}.json`);
+  if (!existsSync(f) || !existsSync(meta)) return null;
+  try {
+    const m = JSON.parse(readFileSync(meta, 'utf8')) as { signature: string; width: number; height: number; style?: string };
+    return { ...m, url: `/art/maps/${campaignId}.png?v=${Math.floor(statSync(f).mtimeMs)}` };
+  } catch {
+    return null;
+  }
 }
 
 // ───────────── Fila de geração (uma por vez: a GPU é uma só) ─────────────
@@ -282,6 +372,63 @@ export const artService = {
         save(key, buf, { prompt: job.prompt, seed: job.seed, style: opts.style ?? 'epico', checkpoint: opts.checkpoint ?? null, source: 'comfyui' });
         job.status = 'pronto';
         job.url = urlFor(key) ?? undefined;
+      } catch (e) {
+        job.status = 'erro';
+        job.error = (e as Error).message;
+      } finally {
+        job.finishedAt = Date.now();
+        onChange();
+      }
+    });
+    return job;
+  },
+
+  /** Mapa repintado pela IA desta campanha (se houver). */
+  mapArt(campaignId: string) {
+    if (!UUID_RE.test(campaignId)) throw badRequest('Campanha inválida');
+    return mapInfo(campaignId);
+  },
+
+  removeMapArt(campaignId: string) {
+    if (!UUID_RE.test(campaignId)) throw badRequest('Campanha inválida');
+    for (const f of [mapFile(campaignId), path.join(MAP_DIR, `${campaignId}.json`)]) if (existsSync(f)) unlinkSync(f);
+    onChange();
+  },
+
+  /**
+   * Repinta o mapa da mesa (imagem enviada pelo Host) mantendo o traçado: o resultado fica
+   * por baixo das fichas e dos bonecos, para todos os jogadores.
+   */
+  paintMap(campaignId: string, o: { image: string; signature: string; kind?: string; mood?: string; style?: string; denoise?: number; checkpoint?: string; quality?: Quality; prompt?: string; tilesW: number; tilesH: number }): ArtJob {
+    if (!UUID_RE.test(campaignId)) throw badRequest('Campanha inválida');
+    const m = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/.exec(o.image ?? '');
+    if (!m) throw badRequest('Envie o mapa como data URL (PNG, JPG ou WebP)');
+    const src = Buffer.from(m[2], 'base64');
+    if (!isImage(src)) throw badRequest('Imagem do mapa inválida');
+    if (jobs.some((j) => j.key === `mapa:${campaignId}` && (j.status === 'na_fila' || j.status === 'gerando'))) throw badRequest('Este mapa já está sendo pintado');
+    const job: ArtJob = {
+      id: randomUUID(), key: `mapa:${campaignId}`, status: 'na_fila',
+      prompt: (o.prompt?.trim() || mapPrompt(o.kind, o.mood, o.style)).slice(0, 1500),
+      seed: Math.floor(Math.random() * 2 ** 31), createdAt: Date.now(),
+    };
+    jobs.push(job);
+    chain = chain.then(async () => {
+      job.status = 'gerando';
+      onChange();
+      try {
+        const checkpoint = await pickCheckpoint(o.checkpoint);
+        const name = await uploadToComfy(src, `mesa_mapa_${campaignId}.png`);
+        const size = workSize(o.tilesW, o.tilesH, profileFor(checkpoint).size);
+        const buf = await queueAndWait(img2imgWorkflow({
+          checkpoint, image: name, ...size, prompt: job.prompt, negative: MAP_NEGATIVE, seed: job.seed,
+          denoise: Math.min(0.8, Math.max(0.2, o.denoise ?? 0.5)), quality: o.quality,
+        }));
+        if (!isImage(buf)) throw new Error('O ComfyUI devolveu algo que não é imagem');
+        mkdirSync(MAP_DIR, { recursive: true });
+        writeFileSync(mapFile(campaignId), buf);
+        writeFileSync(path.join(MAP_DIR, `${campaignId}.json`), JSON.stringify({ signature: o.signature, width: o.tilesW, height: o.tilesH, style: o.style ?? 'epico', prompt: job.prompt, seed: job.seed, checkpoint, savedAt: new Date().toISOString() }, null, 2));
+        job.status = 'pronto';
+        job.url = mapInfo(campaignId)?.url;
       } catch (e) {
         job.status = 'erro';
         job.error = (e as Error).message;

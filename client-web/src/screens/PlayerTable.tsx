@@ -4,8 +4,9 @@ import {
   type AdvantageState, type LogEntry, type PendingCheck, type ProjectedState, type Skill, type TableState, type Token,
 } from '@mesa/shared';
 import {
-  Badge, Bar, Button, LogFeed, MapCanvas, Spinner, Term, api, cx, navigate, toast, useSession, useTable,
-  type Cell, type Highlight, TokenAvatar, artKeyFor, isPortraitSpec, portraitUrl } from '@mesa/common';
+  Button, CinematicLayer, LogFeed, MapCanvas, Spinner, Term, api, cx, navigate, toast, useSession, useTable,
+  type Cell, type Highlight } from '@mesa/common';
+import { HeroFrame, HotBar, InitiativeRibbon, QuestTracker } from './PlayerHud';
 import type { CharacterDTO } from '../types';
 import { GuideContent } from './Guide';
 
@@ -86,36 +87,16 @@ export function PlayerTable({ campaignId }: { campaignId: string }) {
     <div className="fixed inset-0 flex flex-col overflow-hidden">
       {/* ── Barra flutuante de PV/Estamina e turno ── */}
       <div className="absolute inset-x-2 top-2 z-20 space-y-2">
-        <div className="rounded-xl border border-white/10 bg-slate-950/85 p-2 shadow-xl backdrop-blur">
-          <div className="flex items-center gap-2">
+        {me ? (
+          <HeroFrame me={me} character={character} economy={economy} myTurn={myTurn} onBack={() => navigate('/')} connected={status === 'conectado'} />
+        ) : (
+          <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/85 p-2 text-sm text-slate-300 shadow-xl backdrop-blur">
             <button onClick={() => navigate('/')} className="rounded-lg px-1 text-lg" aria-label="Sair da mesa">←</button>
-            {me && (isPortraitSpec(me.face)
-              ? <img src={portraitUrl(me.face, 72)} width={38} height={38} className="rounded-full border-2" style={{ borderColor: me.color }} alt="" />
-              : <TokenAvatar artKey={artKeyFor(me)} color={me.color} size={34} title={me.emblem} />)}
-            {me ? (
-              <div className="grid flex-1 grid-cols-2 gap-2">
-                <Bar label={`❤️ ${me.name}`} value={me.hp as number} max={me.maxHp as number} color="bg-rose-500" />
-                <Bar label="⚡ Estamina" value={me.stamina} max={me.maxStamina} color="bg-amber-400" />
-              </div>
-            ) : <span className="flex-1 text-sm text-slate-300">Aguardando seu personagem...</span>}
-            <span title={status} className={cx('h-2.5 w-2.5 rounded-full', status === 'conectado' ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse')} />
+            Aguardando seu personagem...
           </div>
-          {me && (
-            <div className="mt-1 flex flex-wrap items-center gap-1 text-[11px]">
-              <Badge color="sky">🛡️ <Term k="ca">CA</Term> {me.ac}</Badge>
-              <Badge color="violet">⭐ Nível {me.level ?? 1}</Badge>
-              {me.conditions.map((c) => <Badge key={c} color="rose">{c}</Badge>)}
-              {economy && (
-                <>
-                  <Badge color={economy.action ? 'emerald' : 'slate'}><Term k="acao">Ação</Term> {economy.action}</Badge>
-                  <Badge color={economy.bonusAction ? 'emerald' : 'slate'}><Term k="acao_bonus">Bônus</Term> {economy.bonusAction}</Badge>
-                  <Badge color={economy.reaction ? 'emerald' : 'slate'}><Term k="reacao">Reação</Term> {economy.reaction}</Badge>
-                  <Badge color="amber"><Term k="movimento">Mov.</Term> {economy.movement}</Badge>
-                </>
-              )}
-            </div>
-          )}
-        </div>
+        )}
+        {combat && <InitiativeRibbon state={state} meId={me?.id} />}
+        <div className="flex justify-end"><QuestTracker quests={state.sideQuests} chapter={activeChapter?.title} sceneKey={state.sceneKey} compact={!!combat} /></div>
         {myChecks.map((c) => (
           <div key={c.id} className="rounded-lg border border-amber-400 bg-amber-950/95 p-2 text-sm shadow-lg">
             <p className="font-semibold">🎯 O Mestre pede: {checkLabel(c.kind, c.key)}{c.dc ? ` CD ${c.dc}` : ''}{c.label ? ` — ${c.label}` : ''}</p>
@@ -133,9 +114,9 @@ export function PlayerTable({ campaignId }: { campaignId: string }) {
           </div>
         )}
         {(state.paused || state.players[user.id]?.paused) && <div className="rounded-lg bg-violet-900/90 p-2 text-center text-sm font-semibold">⏸️ {state.paused ? 'O Mestre pausou a mesa' : 'O Mestre pausou você por um momento'}</div>}
-        {combat && (
-          <div className={cx('rounded-lg p-2 text-center text-sm font-bold shadow-lg', myTurn ? 'bg-amber-500 text-slate-950 animate-pulse' : 'bg-slate-900/90')}>
-            {myTurn ? '⚔️ É O SEU TURNO!' : `Rodada ${combat.round} · Turno de ${currentName ?? '...'}`}
+        {combat && !myTurn && (
+          <div className="rounded-lg bg-slate-900/90 p-1.5 text-center text-xs font-semibold shadow-lg">
+            Turno de {currentName ?? '...'}
           </div>
         )}
         {mode && <ModeHint mode={mode} onCancel={() => setMode(null)} />}
@@ -150,6 +131,17 @@ export function PlayerTable({ campaignId }: { campaignId: string }) {
           highlights={me && canAct ? highlightsFor(state, me, mode, attackIndex, economy?.movement) : []}
           onCellClick={(cell, tokenId) => void onMapClick(cell, tokenId)}
         />
+        {me && !tab && (canAct || myTurn) && (
+          <div className="absolute inset-x-2 bottom-12 z-20">
+            <HotBar
+              me={me} canAct={canAct} myTurn={myTurn} inCombat={!!combat} attackIndex={attackIndex}
+              onMode={(m) => setMode(m)}
+              onPotion={() => void send({ type: 'item.use', tokenId: me.id, itemKey: 'pocao_cura' })}
+              onEndTurn={() => void send({ type: 'combat.endTurn', tokenId: me.id })}
+            />
+          </div>
+        )}
+        <CinematicLayer state={state} myTokenId={me?.id} myLevel={me?.level} />
       </div>
 
       {/* ── Painel inferior ── */}

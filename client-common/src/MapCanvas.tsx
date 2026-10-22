@@ -6,9 +6,10 @@ import { useTable, type FxEvent } from './stores';
 import { cx } from './ui';
 import { artKeyFor, getArtTexture, isPainted, loadPaintedArt, onArtLoaded } from './tokenArt';
 import { MOOD_STYLE, TILE, buildStaticLayers, glowTexture, noiseTexture, staticSignature, type Animated, type StaticLayers } from './mapRender';
+import { loadMapArt, mapArtFor, mapArtTexture, onMapArt, paintedMapPreferred, setPaintedMapPreferred } from './mapArt';
 import { getPortraitTexture, onPortraitLoaded } from './portrait';
 import { AmbientLayer } from './ambient';
-import { FigureLayer, figureMode, onFiguresPref, setFigureMode, type FigureMode } from './figureLayer';
+import { FigureLayer, figureMode, onFiguresPref, setFigureMode, ultraGraphics, type FigureMode } from './figureLayer';
 
 export interface Cell {
   x: number;
@@ -35,11 +36,24 @@ export interface MapCanvasProps {
   className?: string;
 }
 
+const DIVINITY_COLORS: Record<string, number> = {
+  zeus: 0xfde047, poseidon: 0x38bdf8, hades: 0x8b5cf6, atena: 0xe5e7eb, apolo: 0xfbbf24, ares: 0xef4444, afrodite: 0xf472b6,
+  hefesto: 0xf97316, hermes: 0x93c5fd, demeter: 0x84cc16, artemis: 0xe2e8f0, dionisio: 0xa855f7, hecate: 0xc084fc, hera: 0xfda4af,
+};
+function divinityColor(d?: string): number {
+  return (d && DIVINITY_COLORS[d]) || 0xfff3b0;
+}
+
 interface LiveFx {
   node: Container;
   life: number;
   max: number;
-  kind: 'float' | 'burst' | 'slash' | 'proj';
+  kind: 'float' | 'burst' | 'slash' | 'proj' | 'particle' | 'ring';
+  /** Partículas: velocidade (px/ms) e gravidade. */
+  vx?: number;
+  vy?: number;
+  g?: number;
+  spin?: number;
   /** Espera antes de aparecer (ms): o número de dano surge no impacto do golpe. */
   delay?: number;
   from?: { x: number; y: number };
@@ -54,6 +68,9 @@ interface Layers {
   surfaces: Container;
   marks: Graphics;
   features: Container;
+  objects: Container;
+  /** Mapa repintado pela IA (substitui chão, água, terreno e copas). */
+  painted: Container;
   tokens: Container;
   figs: FigureLayer;
   ambient: AmbientLayer;
@@ -69,6 +86,7 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
   const appRef = useRef<Application | null>(null);
   const layers = useRef<Layers | null>(null);
   const staticRef = useRef<{ sig: string; layers: StaticLayers } | null>(null);
+  const paintedUrl = useRef('');
   const animRef = useRef<Animated[]>([]);
   const lightNodes = useRef<{ node: Sprite; base: number; flicker: boolean; phase: number }[]>([]);
   const liveFx = useRef<LiveFx[]>([]);
@@ -90,7 +108,7 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
     const app = new Application();
     const cleanup: (() => void)[] = [];
 
-    void app.init({ resizeTo: el, background: 0x0b1020, antialias: true, autoDensity: true, resolution: Math.min(2, window.devicePixelRatio || 1) }).then(() => {
+    void app.init({ resizeTo: el, background: 0x0b1020, antialias: true, autoDensity: true, resolution: ultraGraphics() ? Math.min(3, (window.devicePixelRatio || 1) * 1.5) : Math.min(2, window.devicePixelRatio || 1) }).then(() => {
       if (cancelled) {
         app.destroy(true);
         return;
@@ -118,6 +136,8 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
       const surfaces = new Container();
       const marks = new Graphics();
       const features = new Container();
+      const objects = new Container();
+      const painted = new Container();
       const tokens = new Container();
       const figs = new FigureLayer(() => drawRef.current());
       const ambient = new AmbientLayer();
@@ -133,10 +153,10 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
       disp.alpha = 0;
       water.filters = [new DisplacementFilter({ sprite: disp, scale: 6 })];
       lights.blendMode = 'add';
-      world.addChild(water, ground, grid, surfaces, marks, features, tokens, figs.container, canopy, ambient.container, dark, lights, ambient.glow, fx, disp);
+      world.addChild(water, ground, painted, grid, surfaces, marks, features, objects, tokens, figs.container, canopy, ambient.container, dark, lights, ambient.glow, fx, disp);
       app.stage.addChild(world);
       appRef.current = app;
-      layers.current = { world, ground, water, grid, surfaces, marks, features, tokens, figs, ambient, canopy, dark, lights, fx, disp };
+      layers.current = { world, ground, water, painted, grid, surfaces, marks, features, objects, tokens, figs, ambient, canopy, dark, lights, fx, disp };
       cleanup.push(() => figs.destroy(), () => ambient.destroy());
 
       // Encaixa o mapa na tela
@@ -198,6 +218,15 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
           } else if (f.kind === 'float') {
             f.node.y -= t.deltaMS * 0.03;
             f.node.alpha = 1 - p;
+          } else if (f.kind === 'particle') {
+            f.vy = (f.vy ?? 0) + (f.g ?? 0) * t.deltaMS;
+            f.node.x += (f.vx ?? 0) * t.deltaMS;
+            f.node.y += (f.vy ?? 0) * t.deltaMS;
+            f.node.rotation += (f.spin ?? 0) * t.deltaMS;
+            f.node.alpha = p < 0.7 ? 1 : 1 - (p - 0.7) / 0.3;
+          } else if (f.kind === 'ring') {
+            f.node.scale.set(0.15 + p * 1.0);
+            f.node.alpha = p < 0.15 ? p / 0.15 : 1 - (p - 0.15) / 0.85;
           } else {
             f.node.scale.set(0.4 + p * 0.9);
             f.node.alpha = 1 - p;
@@ -333,13 +362,15 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
     // Camadas estáticas (chão, água, paredes, árvores, objetos): só refaz quando o mapa muda
     const sig = staticSignature(map);
     if (staticRef.current?.sig !== sig) {
-      for (const layer of [L.ground, L.water, L.features, L.canopy]) for (const c of layer.removeChildren()) c.destroy({ children: true });
+      for (const layer of [L.ground, L.water, L.features, L.objects, L.canopy]) for (const c of layer.removeChildren()) c.destroy({ children: true });
       const built = buildStaticLayers(map);
       L.ground.addChild(built.ground);
       L.water.addChild(built.water);
       L.features.addChild(built.features);
+      L.objects.addChild(built.objects);
       L.canopy.addChild(built.canopy);
       staticRef.current = { sig, layers: built };
+      paintedUrl.current = '';
       // Ambiente (escuridão) e luzes
       const style = MOOD_STYLE[mood];
       L.dark.clear();
@@ -355,6 +386,21 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
       for (let x = 0; x <= map.width; x++) L.grid.moveTo(x * TILE, 0).lineTo(x * TILE, map.height * TILE);
       for (let y = 0; y <= map.height; y++) L.grid.moveTo(0, y * TILE).lineTo(map.width * TILE, y * TILE);
       L.grid.stroke({ width: 1, color: 0x000000, alpha: 0.14 });
+    }
+
+    // Mapa pintado pela IA: vale enquanto o terreno for o mesmo que foi pintado
+    const art = paintedMapPreferred() ? mapArtFor(useTable.getState().campaignId, map) : null;
+    const tex = art ? mapArtTexture(art) : null;
+    const usePaint = !!tex;
+    L.ground.visible = L.water.visible = L.features.visible = L.canopy.visible = !usePaint;
+    L.painted.visible = usePaint;
+    if (usePaint && paintedUrl.current !== art!.url) {
+      for (const c of L.painted.removeChildren()) c.destroy();
+      const sp = new Sprite(tex!);
+      sp.width = map.width * TILE;
+      sp.height = map.height * TILE;
+      L.painted.addChild(sp);
+      paintedUrl.current = art!.url;
     }
     L.grid.visible = showGrid;
     L.ambient.setup(map.width, map.height, mood, map.tiles.some((t) => t.t === 'arvore'));
@@ -589,6 +635,51 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
         if (fx.amount >= 10) setTimeout(() => { shake.current = { t: 260, mag: Math.min(10, 3 + fx.amount / 4) }; }, impactDelay(fx.tokenId));
       }
       if (fx.type === 'explosao') shake.current = { t: 320, mag: 8 };
+      if (fx.type === 'bau' || fx.type === 'revelar' || fx.type === 'poder') {
+        const at = fx.type === 'poder' ? { x: fx.x ?? tokenPos(fx.tokenId)?.x ?? 0, y: fx.y ?? tokenPos(fx.tokenId)?.y ?? 0 } : fx;
+        const cxp = at.x * TILE + TILE / 2;
+        const cyp = at.y * TILE + TILE / 2;
+        const color = fx.type === 'bau' ? 0xffd34d : fx.type === 'revelar' ? 0xc4b5fd : divinityColor(fx.divinity);
+        const radius = fx.type === 'poder' ? ((fx.radius ?? 0) + 0.6) * TILE : TILE * 0.9;
+        // Anel de luz que se expande
+        const ring = new Graphics().circle(0, 0, radius).stroke({ width: 6, color, alpha: 0.95 }).circle(0, 0, radius * 0.75).stroke({ width: 2, color: 0xffffff, alpha: 0.6 });
+        ring.position.set(cxp, cyp);
+        ring.blendMode = 'add';
+        L.fx.addChild(ring);
+        liveFx.current.push({ node: ring, kind: 'ring', life: 750, max: 750 });
+        if (fx.type === 'poder') {
+          const glow = new Graphics().circle(0, 0, radius).fill({ color, alpha: 0.35 });
+          glow.position.set(cxp, cyp);
+          glow.blendMode = 'add';
+          spawn(glow, 'burst', 900);
+          shake.current = { t: 260, mag: 5 };
+          // Feixe do herói até o ponto
+          const caster = tokenPos(fx.tokenId);
+          if (caster) {
+            const beam = new Graphics().moveTo(caster.x * TILE + TILE / 2, caster.y * TILE + TILE / 2 - TILE * 0.4).lineTo(cxp, cyp).stroke({ width: 5, color, alpha: 0.85 });
+            beam.blendMode = 'add';
+            L.fx.addChild(beam);
+            liveFx.current.push({ node: beam, kind: 'float', life: 380, max: 380 });
+          }
+        }
+        // Partículas: moedas (baú), estrelinhas (revelar), faíscas (poder)
+        const n = fx.type === 'bau' ? 18 : fx.type === 'revelar' ? 14 : 26;
+        for (let k = 0; k < n; k++) {
+          const part = new Graphics();
+          if (fx.type === 'bau') part.circle(0, 0, 3.5).fill(0xffd34d).stroke({ width: 1, color: 0x8a5a00 });
+          else if (fx.type === 'revelar') part.star(0, 0, 4, 5, 2).fill(0xf5f3ff);
+          else part.circle(0, 0, 2.6).fill(color);
+          part.position.set(cxp + (Math.random() - 0.5) * 10, cyp - (fx.type === 'bau' ? 6 : 0));
+          part.blendMode = fx.type === 'bau' ? 'normal' : 'add';
+          const ang = fx.type === 'bau' ? -Math.PI / 2 + (Math.random() - 0.5) * 1.6 : Math.random() * Math.PI * 2;
+          const sp = fx.type === 'bau' ? 0.16 + Math.random() * 0.12 : 0.05 + Math.random() * (fx.type === 'poder' ? 0.22 : 0.09);
+          L.fx.addChild(part);
+          liveFx.current.push({
+            node: part, kind: 'particle', life: 900 + Math.random() * 500, max: 1300,
+            vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, g: fx.type === 'bau' ? 0.0006 : fx.type === 'revelar' ? -0.00005 : 0, spin: (Math.random() - 0.5) * 0.02,
+          });
+        }
+      }
       if (fx.type === 'explosao' || fx.type === 'destruicao') {
         const r = fx.type === 'explosao' ? (fx.radius + 0.5) * TILE : TILE * 0.6;
         const g = new Graphics().circle(0, 0, r).fill({ color: fx.type === 'explosao' ? 0xff7b00 : 0xb8a58a, alpha: 0.7 });
@@ -609,6 +700,16 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
     consumeFx(used);
   }, [fxQueue, consumeFx, state.tokens]);
 
+  // Mapa pintado pela IA: carrega ao entrar e redesenha quando muda
+  const campaignId = useTable((s) => s.campaignId);
+  const [, bumpArt] = useState(0);
+  useEffect(() => {
+    if (campaignId) void loadMapArt(campaignId);
+    return onMapArt(() => { bumpArt((n) => n + 1); drawRef.current(); });
+  }, [campaignId]);
+  const hasArt = !!mapArtFor(campaignId, state.map);
+  const showPaint = hasArt && paintedMapPreferred();
+
   useEffect(() => {
     const off = onFiguresPref(() => { const m = figureMode(); layers.current?.figs.setMode(m); setMode(m); });
     return () => {
@@ -621,12 +722,22 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
       <div ref={host} className="absolute inset-0" />
       <button
         type="button"
-        onClick={() => setFigureMode(mode === 'alta' ? 'leve' : mode === 'leve' ? 'fichas' : 'alta')}
+        onClick={() => setFigureMode(mode === 'ultra' ? 'alta' : mode === 'alta' ? 'leve' : mode === 'leve' ? 'fichas' : 'ultra')}
         title="Alternar: bonecos (alta) → bonecos (leve, para celular fraco) → fichas redondas"
         className="absolute bottom-2 right-2 z-10 rounded-full bg-slate-950/80 px-3 py-1.5 text-xs text-slate-100 ring-1 ring-white/15 hover:bg-slate-800"
       >
-        {mode === 'alta' ? '🧍 Bonecos · alta' : mode === 'leve' ? '🧍 Bonecos · leve' : '⚪ Fichas'}
+        {mode === 'ultra' ? '💎 Bonecos · ultra' : mode === 'alta' ? '🧍 Bonecos · alta' : mode === 'leve' ? '🧍 Bonecos · leve' : '⚪ Fichas'}
       </button>
+      {hasArt && (
+        <button
+          type="button"
+          onClick={() => setPaintedMapPreferred(!showPaint)}
+          title="Mapa pintado pela IA do Mestre ou o desenho original"
+          className="absolute bottom-2 right-40 z-10 rounded-full bg-slate-950/80 px-3 py-1.5 text-xs text-slate-100 ring-1 ring-white/15 hover:bg-slate-800"
+        >
+          {showPaint ? '🎨 Mapa pintado' : '🗺️ Mapa desenhado'}
+        </button>
+      )}
     </div>
   );
 }

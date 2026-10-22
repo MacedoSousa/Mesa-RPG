@@ -6,6 +6,11 @@
  */
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { ultraGraphics } from '../figureLayer';
 import { DIVINITIES, baseItemKey } from '@mesa/shared';
 import type { BodyKey, HeroLook, PortraitSpec } from '../index';
 import { buildRigFigure, markOwn, mat, mix, skinCells, type AtlasChange, type Figure, type HeadMetrics, type HeroAction, type RigSpec } from './figure';
@@ -340,12 +345,16 @@ export class HeroStage {
   private subjectKey = '';
   private resizeObs: ResizeObserver;
   private disposed = false;
+  /** Ultra: brilho (bloom) e supersampling, para placas de vídeo dedicadas. */
+  private composer: EffectComposer | null = null;
+  private bloom: UnrealBloomPass | null = null;
   onLoading?: (loading: boolean) => void;
   onError?: (e: unknown) => void;
 
   constructor(private host: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    const ultra = ultraGraphics();
+    this.renderer.setPixelRatio(ultra ? Math.min((window.devicePixelRatio || 1) * 1.5, 3) : Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 0.9;
@@ -368,7 +377,7 @@ export class HeroStage {
     const key = new THREE.DirectionalLight('#ffe2b8', 1.7);
     key.position.set(2.5, 5, 3.5);
     key.castShadow = true;
-    key.shadow.mapSize.set(1024, 1024);
+    key.shadow.mapSize.set(ultra ? 2048 : 1024, ultra ? 2048 : 1024);
     key.shadow.camera.near = 0.5; key.shadow.camera.far = 15;
     key.shadow.camera.left = -2.5; key.shadow.camera.right = 2.5; key.shadow.camera.top = 3.5; key.shadow.camera.bottom = -1;
     key.shadow.bias = -0.0005;
@@ -435,6 +444,14 @@ export class HeroStage {
     this.particles = new THREE.Points(pg, new THREE.PointsMaterial({ color: '#cbd5e1', size: 0.028, transparent: true, opacity: 0.65, blending: THREE.AdditiveBlending, depthWrite: false }));
     s.add(this.particles);
 
+    if (ultra) {
+      this.composer = new EffectComposer(this.renderer);
+      this.composer.addPass(new RenderPass(this.scene, this.camera));
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.42, 0.55, 0.82);
+      this.composer.addPass(this.bloom);
+      this.composer.addPass(new OutputPass());
+    }
+
     this.bindInput();
     this.resizeObs = new ResizeObserver(() => this.resize());
     this.resizeObs.observe(host);
@@ -475,6 +492,8 @@ export class HeroStage {
   private resize() {
     const w = Math.max(1, this.host.clientWidth), h = Math.max(1, this.host.clientHeight);
     this.renderer.setSize(w, h, false);
+    this.composer?.setPixelRatio(this.renderer.getPixelRatio());
+    this.composer?.setSize(w, h);
     this.renderer.domElement.style.width = '100%';
     this.renderer.domElement.style.height = '100%';
     this.camera.aspect = w / h;
@@ -592,7 +611,8 @@ export class HeroStage {
       this.symbol.material.rotation = Math.sin(t * 1.5) * 0.08;
       if (life <= 0) { this.scene.remove(this.symbol); this.symbol.material.map?.dispose(); this.symbol.material.dispose(); this.symbol = null; }
     }
-    this.renderer.render(this.scene, this.camera);
+    if (this.composer) this.composer.render(dt);
+    else this.renderer.render(this.scene, this.camera);
   }
 
   /** Foto do herói (PNG) para usar como retrato. */
@@ -603,6 +623,8 @@ export class HeroStage {
 
   dispose() {
     this.disposed = true;
+    this.composer?.dispose();
+    this.bloom?.dispose();
     this.renderer.setAnimationLoop(null);
     this.resizeObs.disconnect();
     if (this.hero) { this.scene.remove(this.hero.root); this.hero.dispose(); this.hero = null; }

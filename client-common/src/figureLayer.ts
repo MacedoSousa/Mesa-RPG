@@ -312,12 +312,14 @@ export class FigureLayer {
 
 const PREF = 'mesa.figuras';
 const prefListeners = new Set<() => void>();
-export type FigureMode = 'alta' | 'leve' | 'fichas';
+/** ultra: placa de vídeo dedicada (ex.: RTX 2060) · alta: padrão · leve: celulares fracos · fichas: sem bonecos. */
+export type FigureMode = 'ultra' | 'alta' | 'leve' | 'fichas';
 let memo: FigureMode | null = null;
 
 /** Pixels por unidade 3D: "leve" é para celulares mais fracos. */
 function qualityPx(mode: FigureMode) {
   if (mode === 'leve') return 20;
+  if (mode === 'ultra') return Math.round(58 * Math.min(1.6, Math.max(1, (globalThis.devicePixelRatio || 1) * 0.8)));
   return Math.round(34 * Math.min(1.5, Math.max(1, (globalThis.devicePixelRatio || 1) * 0.75)));
 }
 
@@ -325,11 +327,36 @@ export function figureMode(): FigureMode {
   if (memo) return memo;
   try {
     const v = localStorage.getItem(PREF);
-    memo = v === 'fichas' || v === 'leve' ? v : 'alta';
+    memo = v === 'fichas' || v === 'leve' || v === 'alta' || v === 'ultra' ? v : strongGpu() ? 'ultra' : 'alta';
   } catch {
     memo = 'alta';
   }
   return memo;
+}
+
+/** Qualidade gráfica máxima ligada? (bonecos em alta resolução, brilho, sombras e reflexos). */
+export function ultraGraphics(): boolean {
+  return figureMode() === 'ultra';
+}
+
+let gpuMemo: boolean | null = null;
+/** Placa de vídeo dedicada de desktop (GeForce/Radeon/Apple M): liga o Ultra por padrão. */
+export function strongGpu(): boolean {
+  if (gpuMemo !== null) return gpuMemo;
+  gpuMemo = false;
+  try {
+    if (/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)) return gpuMemo;
+    const c = document.createElement('canvas');
+    const gl = c.getContext('webgl2') ?? c.getContext('webgl');
+    if (!gl) return gpuMemo;
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    const name = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+    gpuMemo = /RTX|GTX 1[0-9]{3}|GTX 16|Radeon RX|Radeon Pro|Apple M\d|Arc A/i.test(name);
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+  } catch {
+    /* sem WebGL */
+  }
+  return gpuMemo;
 }
 
 export function figuresPreferred(): boolean {

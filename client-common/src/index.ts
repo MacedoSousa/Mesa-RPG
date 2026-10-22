@@ -12,3 +12,5 @@ export * from './mapRender';
 export * from './portrait';
 export * from './PortraitEditor';
 export * from './gearUi';
+export * from './cinematic';
+export * from './mapArt';

@@ -98,6 +98,7 @@ export const commandSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('quest.create'), title: z.string().trim().min(1).max(80), description: z.string().max(2000).default(''),
     hidden: z.boolean().default(false), target: z.number().int().min(1).max(999).default(1), reward: z.string().max(200).default(''),
+    required: z.boolean().optional(),
     rewardXp: z.number().int().min(0).max(100000).default(0), rewardDracmas: z.number().int().min(0).max(100000).default(0), rewardItems: loot.default([]),
     expiresInRounds: z.number().int().min(1).max(999).optional(), expiresInSeconds: z.number().int().min(10).max(86400).optional(),
     onExpire: z.object({
@@ -138,7 +139,11 @@ export const commandSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('chest.place'), x: coord, y: coord, loot: loot.default([]), dracmas: z.number().int().min(0).max(100000).default(0),
     lockDc: z.number().int().min(5).max(30).nullable().optional(), tier: z.enum(['comum', 'incomum', 'raro']).optional(),
+    hidden: z.boolean().optional(),
   }),
+  z.object({ type: z.literal('object.reveal'), x: coord, y: coord, hidden: z.boolean().optional() }),
+  z.object({ type: z.literal('scene.load'), sceneKey: z.string().min(1).max(60), keepMonsters: z.boolean().optional() }),
+  z.object({ type: z.literal('table.narrate'), title: z.string().max(80).optional(), text: z.string().trim().min(1).max(3000) }),
   z.object({
     type: z.literal('adventure.load'),
     chapters: z.array(z.object({ title: z.string().min(1).max(80), description: z.string().max(4000).default('') })).max(30),
@@ -146,7 +151,7 @@ export const commandSchema = z.discriminatedUnion('type', [
       title: z.string().min(1).max(80), description: z.string().max(2000).default(''), hidden: z.boolean().default(false),
       target: z.number().int().min(1).max(999).default(1), reward: z.string().max(200).default(''),
       rewardXp: z.number().int().min(0).max(100000).default(0), rewardDracmas: z.number().int().min(0).max(100000).default(0),
-      rewardItems: loot.default([]),
+      rewardItems: loot.default([]), required: z.boolean().optional(),
     })).max(60),
     replace: z.boolean().default(false),
   }),

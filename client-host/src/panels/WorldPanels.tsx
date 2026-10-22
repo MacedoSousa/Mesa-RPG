@@ -3,10 +3,84 @@ import {
   DAMAGE_TYPES, MAP_KINDS, MAP_KIND_KEYS, MONSTERS, OBJECTS, SURFACES, TERRAIN, type DamageType, type Element, type MapKind, type MapState, type ObjectType, type ProjectedState,
   type SurfaceType, type TerrainType,
 } from '@mesa/shared';
-import { Badge, Button, Field, Modal, Select, api, cx, errorMessage, toast, useTable, TokenAvatar } from '@mesa/common';
+import { Badge, Button, Field, Modal, Select, api, captureMapForPainting, cx, errorMessage, loadMapArt, mapArtFor, onMapArt, terrainSignature, toast, useTable, TokenAvatar } from '@mesa/common';
 
 const HeroViewer = lazy(() => import('@mesa/3d/HeroViewer'));
 import type { Tool } from '../tools';
+
+/** Repinta o mapa atual com a IA do PC do Mestre (ComfyUI img2img), mantendo o traçado. */
+function PaintMapCard({ campaignId, state }: { campaignId: string; state: ProjectedState }) {
+  const [style, setStyle] = useState('epico');
+  const [styles, setStyles] = useState<{ key: string; label: string }[]>([]);
+  const [fidelity, setFidelity] = useState(0.5);
+  const [quality, setQuality] = useState<'rapida' | 'boa' | 'caprichada'>('boa');
+  const [job, setJob] = useState<{ id: string; status: string; error?: string } | null>(null);
+  const [comfyOk, setComfyOk] = useState<boolean | null>(null);
+  const [, bump] = useState(0);
+  const art = mapArtFor(campaignId, state.map as MapState);
+
+  useEffect(() => {
+    api<{ ok: boolean }>('/art/comfy').then((r) => setComfyOk(r.ok)).catch(() => setComfyOk(false));
+    api<{ styles: { key: string; label: string }[] }>('/art/prompts').then((r) => setStyles(r.styles ?? [])).catch(() => undefined);
+    void loadMapArt(campaignId, true).then(() => bump((n) => n + 1));
+    return onMapArt(() => bump((n) => n + 1));
+  }, [campaignId]);
+
+  const busy = job?.status === 'na_fila' || job?.status === 'gerando';
+  useEffect(() => {
+    if (!busy || !job) return;
+    const t = setInterval(async () => {
+      try {
+        const r = await api<{ jobs: { id: string; status: string; error?: string }[] }>('/art/jobs');
+        const j = r.jobs.find((x) => x.id === job.id);
+        if (j) setJob(j);
+        if (j?.status === 'pronto') { await loadMapArt(campaignId, true); toast('🎨 Mapa pintado! Todos já estão vendo.', 'sucesso'); }
+        if (j?.status === 'erro') toast(j.error ?? 'Erro ao pintar', 'erro');
+      } catch {
+        /* tenta de novo */
+      }
+    }, 2500);
+    return () => clearInterval(t);
+  }, [busy, job, campaignId]);
+
+  async function paint() {
+    try {
+      const map = state.map as MapState;
+      const image = await captureMapForPainting(map);
+      const r = await api<{ job: { id: string; status: string } }>(`/art/maps/${campaignId}/paint`, {
+        method: 'POST',
+        json: { image, signature: terrainSignature(map), tilesW: map.width, tilesH: map.height, kind: map.kind ?? map.id ?? undefined, mood: map.mood, style, denoise: 1 - fidelity + 0.1, quality },
+      });
+      setJob(r.job);
+      toast('Pintando o mapa na sua placa de vídeo… (SDXL Turbo ~15 s, SDXL ~1 min)', 'info');
+    } catch (e) {
+      toast(errorMessage(e), 'erro');
+    }
+  }
+
+  return (
+    <section className="rounded-xl border border-fuchsia-400/30 bg-fuchsia-950/20 p-2">
+      <p className="mb-1 text-sm font-semibold text-fuchsia-200">🎨 Pintar o mapa com IA</p>
+      <p className="mb-2 text-[11px] text-slate-400">
+        A IA do seu PC (ComfyUI) repinta este mapa mantendo paredes, árvores e caminhos no mesmo lugar. Fichas, bonecos, baús e efeitos continuam por cima. Se o terreno mudar, volta o desenho original.
+      </p>
+      {comfyOk === false && <p className="mb-2 rounded bg-amber-500/10 p-1.5 text-[11px] text-amber-200">ComfyUI desligado: veja a aba 🎨 Arte.</p>}
+      <div className="grid grid-cols-2 gap-2">
+        <Select label="Estilo" value={style} onChange={setStyle} options={(styles.length ? styles : [{ key: 'epico', label: 'Pintura épica' }]).map((st) => ({ value: st.key, label: st.label }))} />
+        <Select label="Qualidade" value={quality} onChange={(v) => setQuality(v as typeof quality)} options={[{ value: 'rapida', label: 'Rápida' }, { value: 'boa', label: 'Boa' }, { value: 'caprichada', label: 'Caprichada' }]} />
+      </div>
+      <label className="mt-2 block text-xs text-slate-300">
+        Fiel ao desenho ↔ mais criativo
+        <input type="range" min={0.2} max={0.7} step={0.05} value={1 - fidelity} onChange={(e) => setFidelity(1 - Number(e.target.value))} className="w-full" />
+      </label>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <Button size="sm" variant="gold" disabled={busy || comfyOk === false} onClick={() => void paint()}>{busy ? (job?.status === 'gerando' ? '🎨 Pintando…' : '⏳ Na fila…') : art ? '🎲 Pintar de novo' : '🎨 Pintar este mapa'}</Button>
+        {art && <Button size="sm" variant="ghost" onClick={() => void api(`/art/maps/${campaignId}`, { method: 'DELETE' }).then(() => loadMapArt(campaignId, true))}>↩️ Voltar ao desenho</Button>}
+      </div>
+      {art && <img src={art.url} alt="Mapa pintado" className="mt-2 w-full rounded-lg border border-white/10" />}
+    </section>
+  );
+}
 
 const hex = (n: number) => `#${n.toString(16).padStart(6, '0')}`;
 
@@ -118,6 +192,7 @@ export function MapPanel({ campaignId, state, tool, setTool }: { campaignId: str
 
   return (
     <div className="space-y-4">
+      <PaintMapCard campaignId={campaignId} state={state} />
       <section className="rounded-xl border border-emerald-400/30 bg-emerald-950/20 p-2">
         <p className="mb-1 text-sm font-semibold text-emerald-200">✨ Gerar mapa</p>
         <p className="mb-2 text-[11px] text-slate-400">Cria um mapa novo por semente: mesma semente = mesmo mapa. Depois dá para editar, salvar e destruir à vontade.</p>

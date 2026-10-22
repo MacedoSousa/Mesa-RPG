@@ -358,6 +358,8 @@ export interface StaticLayers {
   ground: Container;
   water: Container;
   features: Container;
+  /** Barris, baús, estátuas…: ficam por cima do mapa pintado pela IA. */
+  objects: Container;
   canopy: Container;
   canopyByCell: Map<string, Container>;
   lights: Light[];
@@ -370,6 +372,7 @@ export function buildStaticLayers(map: MapState): StaticLayers {
   const ground = new Container();
   const water = new Container();
   const features = new Container();
+  const objects = new Container();
   const canopy = new Container();
   const canopyByCell = new Map<string, Container>();
   const lights: Light[] = [];
@@ -561,11 +564,11 @@ export function buildStaticLayers(map: MapState): StaticLayers {
         }
       }
 
-      if (tile.o) features.addChild(drawObject(tile, px, py, animated, lights, x, y));
+      if (tile.o) objects.addChild(drawObject(tile, px, py, animated, lights, x, y));
     }
   }
 
-  return { ground, water, features, canopy, canopyByCell, lights, animated };
+  return { ground, water, features, objects, canopy, canopyByCell, lights, animated };
 }
 
 function drawObject(tile: Tile, px: number, py: number, animated: Animated[], lights: Light[], x: number, y: number): Container {
@@ -642,6 +645,15 @@ function drawObject(tile: Tile, px: number, py: number, animated: Animated[], li
   // Rachaduras quando danificado
   const def = OBJECTS[o.type];
   if (o.hp < def.maxHp && def.maxHp < 900) g.moveTo(cx - 6, cy - 8).lineTo(cx, cy).lineTo(cx + 5, cy + 7).stroke({ width: 2, color: 0x111111, alpha: 0.6 });
+  if (o.hidden) {
+    // Só o Mestre recebe objetos escondidos: desenha translúcido com um olho
+    c.alpha = 0.45;
+    const eye = new Graphics();
+    eye.circle(px + TILE - 9, py + 9, 7).fill({ color: 0x1e1b4b, alpha: 0.9 }).stroke({ width: 1.5, color: 0xc4b5fd });
+    eye.ellipse(px + TILE - 9, py + 9, 4.5, 2.6).stroke({ width: 1.2, color: 0xe9d5ff });
+    eye.circle(px + TILE - 9, py + 9, 1.3).fill(0xe9d5ff);
+    c.addChild(eye);
+  }
   return c;
 }
 
@@ -656,12 +668,20 @@ export const MOOD_STYLE: Record<MapMood, { darkness: number; tint: number; vigne
 };
 
 /** Fingerprint barato do que é estático (terreno + objetos), para cachear as camadas. */
+/** Só o terreno (sem objetos): o mapa pintado pela IA continua válido quando um baú abre. */
+export function terrainSignature(map: { width: number; height: number; tiles: { t: string }[] }): string {
+  let h = 2166136261;
+  const s = `${map.width}x${map.height}|${map.tiles.map((t) => t.t).join(',')}`;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return (h >>> 0).toString(36);
+}
+
 export function staticSignature(map: MapState): string {
   let h = 2166136261;
   const push = (s: string) => {
     for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
   };
   push(`${map.width}x${map.height}:${map.mood ?? ''}`);
-  for (const t of map.tiles) push(`${t.t}${t.hp ?? ''}${t.o ? `${t.o.type}${t.o.hp}${t.o.locked || t.o.lockDc ? 'L' : ''}` : ''}|`);
+  for (const t of map.tiles) push(`${t.t}${t.hp ?? ''}${t.o ? `${t.o.type}${t.o.hp}${t.o.locked || t.o.lockDc ? 'L' : ''}${t.o.hidden ? 'H' : ''}` : ''}|`);
   return String(h >>> 0);
 }

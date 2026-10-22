@@ -82,6 +82,9 @@ export function buildRoutes(opts: { authRateLimit?: boolean } = {}) {
   r.post('/art/monsters/:key/generate', ...master, ArtController.generate);
   r.put('/art/monsters/:key', ...master, ArtController.upload);
   r.delete('/art/monsters/:key', ...master, ArtController.remove);
+  r.get('/art/maps/:campaignId', requireAuth, ArtController.mapArt);
+  r.post('/art/maps/:campaignId/paint', ...master, ArtController.paintMap);
+  r.delete('/art/maps/:campaignId', ...master, ArtController.removeMapArt);
 
   return r;
 }

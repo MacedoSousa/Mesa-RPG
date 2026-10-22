@@ -117,7 +117,8 @@ export function createBlankMap(width: number, height: number, terrain: TerrainTy
 /** Água profunda congelada vira caminho (como no BG3). */
 export function isWalkableTile(tile: Tile): boolean {
   const def = TERRAIN[tile.t];
-  if (tile.o && OBJECTS[tile.o.type].blocksMovement) return false;
+  // Objeto escondido não bloqueia (senão os jogadores descobririam esbarrando nele)
+  if (tile.o && !tile.o.hidden && OBJECTS[tile.o.type].blocksMovement) return false;
   if (!def.walkable) return def.liquid === true && tile.s?.type === 'gelo';
   return true;
 }

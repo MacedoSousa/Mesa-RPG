@@ -34,3 +34,62 @@ body {
   background: rgba(255, 255, 255, 0.15);
   border-radius: 4px;
 }
+
+/* ───── Animações da mesa (banners, dados, narração, HUD) ───── */
+@keyframes mesa-banner-in {
+  0% { opacity: 0; transform: scaleX(0.2); letter-spacing: 0.4em; }
+  18% { opacity: 1; transform: scaleX(1); }
+  82% { opacity: 1; transform: scaleX(1); }
+  100% { opacity: 0; transform: translateY(-14px); }
+}
+.mesa-banner { animation: mesa-banner-in var(--mesa-banner-ms, 3.4s) ease-out forwards; }
+
+@keyframes mesa-dice-roll {
+  0% { transform: translate(-120px, -160px) rotate(-260deg) scale(0.6); opacity: 0; }
+  30% { opacity: 1; }
+  100% { transform: translate(0, 0) rotate(0) scale(1); }
+}
+@keyframes mesa-dice-land {
+  0% { transform: scale(1.25); }
+  40% { transform: scale(0.92); }
+  100% { transform: scale(1); }
+}
+.mesa-dice-roll { animation: mesa-dice-roll 0.72s cubic-bezier(0.2, 0.7, 0.3, 1.2) both; }
+.mesa-dice-land { animation: mesa-dice-land 0.35s ease-out both; }
+
+@keyframes mesa-confetti {
+  0% { transform: translateY(0) rotate(0); opacity: 1; }
+  100% { transform: translateY(105vh) rotate(720deg); opacity: 0.6; }
+}
+.mesa-confetti { animation-name: mesa-confetti; animation-timing-function: cubic-bezier(0.3, 0.6, 0.6, 1); animation-fill-mode: forwards; }
+
+@keyframes mesa-narration-in {
+  0% { opacity: 0; transform: translateY(24px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.mesa-narration { animation: mesa-narration-in 0.6s ease-out both; }
+
+@keyframes mesa-hit-flash {
+  0% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.9) inset; }
+  100% { box-shadow: 0 0 0 40px rgba(244, 63, 94, 0) inset; }
+}
+.mesa-hit { animation: mesa-hit-flash 0.6s ease-out; }
+
+@keyframes mesa-pip-pop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+.mesa-pip-pop { animation: mesa-pip-pop 0.35s ease-out; }
+
+@keyframes mesa-glow {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.6), 0 0 14px rgba(251, 191, 36, 0.35); }
+  50% { box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.9), 0 0 26px rgba(251, 191, 36, 0.6); }
+}
+.mesa-glow { animation: mesa-glow 1.6s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mesa-banner, .mesa-dice-roll, .mesa-dice-land, .mesa-confetti, .mesa-narration, .mesa-hit, .mesa-pip-pop, .mesa-glow { animation-duration: 0.01s !important; animation-iteration-count: 1 !important; }
+}
+.mesa-noscroll { scrollbar-width: none; }
+.mesa-noscroll::-webkit-scrollbar { display: none; }

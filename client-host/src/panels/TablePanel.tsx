@@ -191,6 +191,7 @@ function ChestCard({ state, setTool }: { state: ProjectedState; setTool: (t: Too
   const [qty, setQty] = useState('1');
   const [items, setItems] = useState<LootEntry[]>([]);
   const [dracmas, setDracmas] = useState('10');
+  const [hidden, setHidden] = useState(false);
 
   return (
     <Card title="🧰 Baú de tesouro">
@@ -214,6 +215,7 @@ function ChestCard({ state, setTool }: { state: ProjectedState; setTool: (t: Too
         </>
       )}
       <Field className="mt-2" label="Trancado? CD para abrir (vazio = aberto)" type="number" value={lock} onChange={(e) => setLock(e.target.value)} placeholder="12" />
+      <label className="mt-2 flex items-center gap-2 text-sm"><input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} /> 🙈 Escondido (os jogadores só veem depois que você revelar)</label>
       <Button
         className="mt-2 w-full"
         variant="gold"
@@ -223,10 +225,22 @@ function ChestCard({ state, setTool }: { state: ProjectedState; setTool: (t: Too
           dracmas: mode === 'manual' ? Math.max(0, Number(dracmas) || 0) : 0,
           lockDc: Number(lock) >= 5 ? Number(lock) : null,
           tier: mode === 'tabela' ? tier : undefined,
+          hidden,
         })}
       >
         🧰 Clicar no mapa para colocar o baú
       </Button>
+      {state.map.tiles.some((t) => t.o?.hidden) && (
+        <div className="mt-2 space-y-1 rounded-lg bg-violet-500/10 p-2 text-xs">
+          <p className="font-semibold text-violet-200">🙈 Escondidos no mapa</p>
+          {state.map.tiles.map((t, i) => (t.o?.hidden ? (
+            <div key={i} className="flex items-center gap-2">
+              <span className="flex-1">{t.o.type === 'bau' ? '🧰 Baú' : t.o.type} em ({i % state.map.width}, {Math.floor(i / state.map.width)})</span>
+              <Button size="sm" variant="gold" onClick={() => void send({ type: 'object.reveal', x: i % state.map.width, y: Math.floor(i / state.map.width) })}>✨ Revelar</Button>
+            </div>
+          ) : null))}
+        </div>
+      )}
       <label className="mt-3 flex items-center gap-2 border-t border-white/10 pt-2 text-sm">
         <input type="checkbox" checked={lootOn} onChange={(e) => void send({ type: 'table.options', monsterLoot: e.target.checked })} />
         💰 Monstros derrotados deixam espólio (chance maior nos fortes)

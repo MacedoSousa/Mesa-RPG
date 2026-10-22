@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { io, type Socket } from 'socket.io-client';
 import { loadPaintedArt } from './tokenArt';
+import { loadMapArt } from './mapArt';
 import {
   EVENTS, type Command, type Fx, type FxPayload, type LogEntry, type ProjectedState, type StatePayload,
 } from '@mesa/shared';
@@ -79,6 +80,16 @@ interface TableStore {
 
 let socket: Socket | null = null;
 let fxId = 0;
+const fxListeners = new Set<(fx: Fx) => void>();
+/** Escuta efeitos do servidor (overlays de tela: narração, banners, dados). Não consome a fila do mapa. */
+export function onFx(cb: (fx: Fx) => void): () => void {
+  fxListeners.add(cb);
+  return () => { fxListeners.delete(cb); };
+}
+/** Dispara um efeito só neste aparelho (ex.: “Seu turno!”, subida de nível). */
+export function emitLocalFx(fx: Fx) {
+  for (const l of fxListeners) l(fx);
+}
 
 function newCommandId() {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
@@ -128,9 +139,10 @@ export const useTable = create<TableStore>((set, get) => ({
       const now = Date.now();
       const events = p.fx.map((fx) => ({ id: ++fxId, fx, at: now }));
       set({ fx: [...get().fx, ...events].slice(-40) });
+      for (const e of events) for (const l of fxListeners) l(e.fx);
       notifyLog(p.log);
     });
-    s.on(EVENTS.ART, () => void loadPaintedArt(true));
+    s.on(EVENTS.ART, () => { void loadPaintedArt(true); void loadMapArt(campaignId, true); });
     s.on(EVENTS.KICKED, (p: { reason: string }) => {
       set({ kicked: p.reason, status: 'desconectado' });
       toast(p.reason, 'erro');
@@ -176,6 +188,8 @@ function notifyLog(entries: LogEntry[]) {
   for (const e of entries) {
     if (e.type === 'dado') toast(e.text, 'dado');
     else if (e.type === 'turno' && e.text.startsWith('▶️')) toast(e.text, 'info');
+    // Narração e troca de cena já aparecem como cinema/banner na tela
+    else if (e.type === 'capitulo' && (e.text.startsWith('📖 ') && e.text.length > 90 || e.text.startsWith('🎬') || e.text.startsWith('📖 Começa'))) continue;
     else if (e.type === 'quest' || e.type === 'capitulo' || e.type === 'divino' || e.type === 'recompensa') toast(e.text, 'sucesso');
     else if (e.type === 'teste') toast(e.text, e.text.startsWith('❌') ? 'erro' : 'dado');
   }

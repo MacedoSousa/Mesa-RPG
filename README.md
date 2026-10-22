@@ -5,6 +5,8 @@ As regras vêm do D&D 5e (SRD). O combate tático, com superfícies e cenário d
 O tema é mitologia grega no estilo *Percy Jackson*: semideuses, pais olímpicos e monstros dos mitos.
 
 > **Versão:** 0.2.0-alpha. Projeto pessoal e recreativo, para jogar com família e amigos (veja [Avisos](#avisos)).
+>
+> 🎬 **Primeira vez como Mestre?** Comece por [`docs/GUIA_PRIMEIRA_SESSAO.md`](docs/GUIA_PRIMEIRA_SESSAO.md) e pela aba **🎬 Roteiro** do Host. O vídeo de apresentação está em [`docs/video/mesa-rpg-apresentacao.mp4`](docs/video/mesa-rpg-apresentacao.mp4).
 
 ---
 
@@ -98,7 +100,7 @@ O Vite encaminha `/api` e `/socket.io` para o servidor, então os cookies e o We
 
 1. **Mestre:** cria a campanha no HUD e recebe um código de convite (ex.: `K7QX2M`) com QR code.
 2. **Jogadores:** criam conta, criam o personagem no assistente de 4 passos e entram com o código.
-3. **Mestre:** escolhe o mapa (Acampamento Meio-Sangue, Submundo, Olimpo, Rio Hudson, ou um desenhado por ele), posiciona monstros e inicia o combate.
+3. **Mestre:** na aba **🎬 Roteiro**, escolhe o capítulo e carrega a cena pronta (mapa, monstros, baús e quests aparecem sozinhos). Também dá para escolher um mapa (Acampamento Meio-Sangue, Submundo, Olimpo, Rio Hudson ou um desenhado por ele) e montar tudo à mão.
 4. Salve com 💾 quando quiser parar. O autosave roda a cada 60 s.
 
 ---
@@ -284,6 +286,12 @@ Fórmulas `NdX±M` combináveis (`1d8+1d6+2`), `kh`/`kl` (vantagem `2d20kh1`), e
 - **Mapa e monstros:** bestiário mitológico (18 monstros, cada um com boneco 3D) injetável em tempo real, inclusive oculto. O editor de mapa pinta terreno, objetos e superfícies.
 - **Controle da mesa:** pausar a mesa ou um jogador, banir, ajustar PV e condições, ajustar afinidade divina.
 - **Save/Load** e histórico.
+- **🎬 Roteiro com cenas prontas:** 11 cenas de *O Ladrão de Raios* em 6 capítulos. Um clique monta cada cena:
+  - o mapa (gerado ou pré-pronto) e o ambiente;
+  - monstros e baús **à mostra ou escondidos**: só o Mestre os vê (translúcidos, com 👁) até tocar em **✨ Revelar**;
+  - quests **obrigatórias** e **opcionais** (e secretas), com XP e itens;
+  - o texto para ler em voz alta (com **📺 Mostrar na tela dos jogadores**);
+  - a regra que a cena ensina e as dicas **✅ pode / ⛔ evite** para o Mestre de primeira viagem.
 - **Aventura pronta:** *O Ladrão de Raios* (adaptação livre, 6 capítulos, quests principais e secundárias com XP), carregada com um clique em **📖 Fases → Aventuras prontas**. O roteiro do narrador está em [`docs/campanha/O_LADRAO_DE_RAIOS.md`](docs/campanha/O_LADRAO_DE_RAIOS.md) e o manual do HUD em [`docs/GUIA_MESTRE.md`](docs/GUIA_MESTRE.md).
 
 ### Rostos dos heróis
@@ -350,7 +358,29 @@ Cada herói ganha um retrato gerado (SVG em camadas, por semente): formato do ro
   - Clarão vermelho e número de dano no impacto; tremor de tela em golpes fortes e explosões.
   - Pose de queda.
 - **Mapa vivo:** árvores balançando com o vento, sombras de nuvens, folhas, vaga-lumes, poeira, brasas e brilhos conforme o ambiente.
-- **Qualidade:** alta, leve (celular fraco) ou fichas redondas, num botão do mapa.
+- **Qualidade:** 💎 ultra, alta, leve (celular fraco) ou fichas redondas, num botão do mapa.
+  - **Ultra** liga sozinho em PCs com placa de vídeo dedicada (RTX, GTX 10/16, Radeon RX):
+    - bonecos com o dobro de resolução, reflexos nos metais e luz de contorno;
+    - no criador de personagem, brilho (bloom), sombras 2048 px e supersampling;
+    - mapa em resolução maior.
+- **Efeitos de cinema:**
+  - banner de capítulo, "Seu turno!", "Vitória!" e subida de nível com confete;
+  - d20 rolando na tela;
+  - narração letra por letra;
+  - baú soltando moedas, brilho ao revelar algo escondido;
+  - poder divino na cor do pai olímpico.
+
+### HUD do jogador (celular)
+
+- **Quadro do herói:**
+  - retrato com anel de XP e nível;
+  - vida com **rastro de dano**, PV temporários, Estamina e CA;
+  - condições com ícone e explicação;
+  - pisca vermelho ao levar dano.
+- **Economia do turno:** pedras de Ação ●, Ação bônus ▲ e Reação ◆, e a barra de passos 👣.
+- **Fita de iniciativa** (estilo BG3): retratos na ordem do turno, com o atual destacado.
+- **Rastreador de quests:** obrigatórias ◆ e opcionais ◇, com progresso e tempo.
+- **Barra rápida:** Mover, Atacar, Poder, Poção, Baú e Fim do turno, com botões grandes para o dedo.
 
 ### Arte dos monstros com IA local
 
@@ -359,6 +389,11 @@ Na aba **🎨 Arte** do Host, a mesa pinta a arte de cada monstro usando o **Com
 - Dá para editar a descrição, gerar outra versão, enviar uma imagem sua ou voltar ao ícone.
 - Pelo terminal: `npm run art`.
 - Workflows próprios, como FLUX, também funcionam.
+- **🎨 Mapa pintado (🗺️ Mapa → Pintar o mapa com IA):**
+  - a mesa envia o desenho do mapa ao ComfyUI (img2img) e a IA repinta mantendo paredes, árvores e caminhos no lugar;
+  - objetos, fichas, bonecos e efeitos continuam por cima;
+  - se o terreno mudar, volta o desenho original;
+  - cada jogador alterna entre 🎨 pintado e 🗺️ desenhado num botão do mapa.
 - Passo a passo em [`docs/ARTE_COM_IA.md`](docs/ARTE_COM_IA.md).
 
 ---
@@ -446,7 +481,7 @@ Conexão: `io(URL, { auth: { token: accessToken } })`. A sessão recupera evento
 Os comandos são validados com zod (`shared/src/engine/commands.ts`):
 
 - **Jogador:** `token.move`, `combat.attack`, `combat.attackTile`, `combat.action`, `combat.shove`, `combat.power`, `combat.endTurn`, `item.use`, `object.open`, `check.roll`, `dice.roll`, `chat.say`.
-- **Mestre (além dos acima):** `table.setPaused`, `chapter.*`, `monster.spawn`, `token.update`, `token.remove`, `combat.start`, `combat.end`, `combat.next`, `map.set`, `map.paint`, `map.element`, `map.damage`, `quest.*`, `player.pause`, `player.ban`, `affinity.adjust`, `combat.auto`, `token.damage`, `check.request`, `check.clear`, `party.rest`, `reward.grant`, `item.take`, `chest.place`, `adventure.load`, `map.generate`, `map.mood`.
+- **Mestre (além dos acima):** `table.setPaused`, `chapter.*`, `monster.spawn`, `token.update`, `token.remove`, `combat.start`, `combat.end`, `combat.next`, `map.set`, `map.paint`, `map.element`, `map.damage`, `quest.*`, `player.pause`, `player.ban`, `affinity.adjust`, `combat.auto`, `token.damage`, `check.request`, `check.clear`, `party.rest`, `reward.grant`, `item.take`, `chest.place` (com `hidden`), `object.reveal`, `scene.load`, `table.narrate`, `adventure.load`, `map.generate`, `map.mood`.
 
 ---
 
@@ -516,4 +551,4 @@ Projeto **pessoal e recreativo**, sem fins comerciais, feito para jogar com fam�
 - A mitologia grega é de domínio público.
 - Se um dia quiser publicar o projeto, o relatório em [docs/PESQUISA.md](docs/PESQUISA.md) lista os nomes que valeria renomear.
 
-Para quem vai jogar pela primeira vez: **[Guia de Iniciação Rápida para Novatos](docs/GUIA_NOVATOS.md)**.
+Para quem vai jogar pela primeira vez: **[Guia de Iniciação Rápida para Novatos](docs/GUIA_NOVATOS.md)**. Para quem vai mestrar pela primeira vez: **[Sua primeira sessão como Mestre](docs/GUIA_PRIMEIRA_SESSAO.md)**.

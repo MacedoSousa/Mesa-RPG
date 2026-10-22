@@ -3,19 +3,20 @@ import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { OBJECTS, SURFACES, TERRAIN, type Command, type Token } from '@mesa/shared';
 import {
-  Badge, Button, LogFeed, MapCanvas, Modal, Spinner, Tabs, api, cx, navigate, toast, useTable, type Cell,
+  Badge, Button, CinematicLayer, LogFeed, MapCanvas, Modal, Spinner, Tabs, api, cx, navigate, toast, useTable, type Cell,
 } from '@mesa/common';
 import { CombatPanel } from '../panels/CombatPanel';
 import { TablePanel } from '../panels/TablePanel';
 import { ChaptersPanel, QuestsPanel } from '../panels/StoryPanels';
+import { ScriptPanel } from '../panels/ScriptPanel';
 import { MapPanel, MonstersPanel, PlayersPanel, SavesPanel } from '../panels/WorldPanels';
 import { toolLabel, type Tool } from '../tools';
 
-type Panel = 'combate' | 'testes' | 'capitulos' | 'quests' | 'monstros' | 'arte' | 'jogadores' | 'mapa' | 'saves';
+type Panel = 'roteiro' | 'combate' | 'testes' | 'capitulos' | 'quests' | 'monstros' | 'arte' | 'jogadores' | 'mapa' | 'saves';
 
 export function MasterHUD({ campaignId }: { campaignId: string }) {
   const { state, status, connect, disconnect, send } = useTable();
-  const [panel, setPanel] = useState<Panel>('combate');
+  const [panel, setPanel] = useState<Panel>('roteiro');
   const [tool, setTool] = useState<Tool>({ kind: 'select' });
   const [selected, setSelected] = useState<string | null>(null);
   const [hover, setHover] = useState<Cell | null>(null);
@@ -81,7 +82,7 @@ export function MasterHUD({ campaignId }: { campaignId: string }) {
         return;
       }
       case 'chest':
-        if (await send({ type: 'chest.place', x: cell.x, y: cell.y, loot: tool.loot, dracmas: tool.dracmas, lockDc: tool.lockDc, tier: tool.tier })) setTool({ kind: 'select' });
+        if (await send({ type: 'chest.place', x: cell.x, y: cell.y, loot: tool.loot, dracmas: tool.dracmas, lockDc: tool.lockDc, tier: tool.tier, hidden: tool.hidden })) setTool({ kind: 'select' });
         return;
       case 'select': {
         if (tokenId && tokenId !== selected) {
@@ -134,11 +135,12 @@ export function MasterHUD({ campaignId }: { campaignId: string }) {
             value={panel}
             onChange={setPanel}
             tabs={[
-              { key: 'combate', label: '⚔️ Combate' }, { key: 'testes', label: '🎯 Testes & 🎁' }, { key: 'capitulos', label: '📖 Fases' }, { key: 'quests', label: '📜 Quests' },
+              { key: 'roteiro', label: '🎬 Roteiro' }, { key: 'combate', label: '⚔️ Combate' }, { key: 'testes', label: '🎯 Testes & 🎁' }, { key: 'capitulos', label: '📖 Fases' }, { key: 'quests', label: '📜 Quests' },
               { key: 'monstros', label: '👹 Monstros' }, { key: 'arte', label: '🎨 Arte' }, { key: 'jogadores', label: '🧑‍🤝‍🧑 Jogadores' }, { key: 'mapa', label: '🗺️ Mapa' }, { key: 'saves', label: '💾 Saves' },
             ]}
           />
           <div className="min-h-0 flex-1 overflow-y-auto p-3">
+            {panel === 'roteiro' && <ScriptPanel state={state} />}
             {panel === 'combate' && <CombatPanel state={state} selectedId={selected} onSelect={setSelected} setTool={setTool} />}
             {panel === 'testes' && <TablePanel state={state} selectedId={selected} setTool={setTool} />}
             {panel === 'capitulos' && <ChaptersPanel state={state} />}
@@ -161,6 +163,7 @@ export function MasterHUD({ campaignId }: { campaignId: string }) {
             onCellHover={setHover}
             highlights={hover && tool.kind === 'element' ? areaCells(hover, tool.radius) : tool.kind === 'attack' ? attackTargets(state, tool.attackerId, tool.attackIndex) : []}
           />
+          <CinematicLayer state={state} master />
           <div className="pointer-events-none absolute left-2 top-2 rounded-lg bg-slate-950/80 px-3 py-1.5 text-sm">
             <span className={cx(tool.kind !== 'select' && 'text-amber-300')}>{toolLabel(tool)}</span>
             {tool.kind !== 'select' && <span className="text-slate-400"> · Esc para sair</span>}

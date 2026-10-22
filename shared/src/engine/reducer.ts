@@ -16,6 +16,8 @@ import { requestChecks, rollCheck } from './checks';
 import { grantToHeroes, openChest, placeChest } from './interact';
 import { autoAct } from './combat';
 import { generateMap } from './mapgen';
+import { getScene } from '../content/scenes';
+import { buildPresetMap } from '../content/maps';
 import { DAMAGE_TYPES } from '../content/items';
 import type { Condition } from '../content/conditions';
 import type { Actor, TableState, Token } from './types';
@@ -222,7 +224,26 @@ function execute(ctx: EngineContext, cmd: Command) {
       grantToHeroes(ctx, { tokenIds: cmd.tokenIds, xp: cmd.xp, dracmas: cmd.dracmas, items: cmd.items, reason: cmd.reason });
       return;
     case 'chest.place':
-      placeChest(ctx, { x: cmd.x, y: cmd.y, loot: cmd.loot, dracmas: cmd.dracmas, lockDc: cmd.lockDc, tier: cmd.tier });
+      placeChest(ctx, { x: cmd.x, y: cmd.y, loot: cmd.loot, dracmas: cmd.dracmas, lockDc: cmd.lockDc, tier: cmd.tier, hidden: cmd.hidden });
+      return;
+    case 'object.reveal': {
+      const tile = tileAt(state.map, cmd.x, cmd.y);
+      if (!tile?.o) throw new CommandError('Não há objeto nessa casa');
+      if (cmd.hidden) tile.o.hidden = true;
+      else {
+        delete tile.o.hidden;
+        ctx.emit({ type: 'revelar', x: cmd.x, y: cmd.y });
+      }
+      const label = OBJECTS[tile.o.type].label;
+      ctx.log(cmd.hidden ? `🙈 ${label} escondido em (${cmd.x}, ${cmd.y})` : `✨ Vocês descobrem: ${label}!`, { type: 'mapa', visibility: cmd.hidden ? 'mestre' : 'publico' });
+      return;
+    }
+    case 'table.narrate':
+      ctx.emit({ type: 'narracao', title: cmd.title, text: cmd.text });
+      ctx.log(`📖 ${cmd.title ? `${cmd.title}: ` : ''}${cmd.text}`, { type: 'capitulo' });
+      return;
+    case 'scene.load':
+      loadScene(ctx, cmd.sceneKey, !!cmd.keepMonsters);
       return;
     case 'adventure.load': {
       if (cmd.replace) {
@@ -235,7 +256,7 @@ function execute(ctx: EngineContext, cmd: Command) {
       cmd.quests.forEach((q, i) => state.sideQuests.push({
         id: ctx.id(`qst${i}`), title: q.title, description: q.description, status: 'ativa', hidden: q.hidden, progress: 0, target: q.target,
         reward: q.reward, rewardXp: q.rewardXp, rewardDracmas: q.rewardDracmas, rewardItems: q.rewardItems,
-        expiresAtRound: null, expiresAt: null, onExpire: null, createdAt: ctx.now,
+        expiresAtRound: null, expiresAt: null, onExpire: null, createdAt: ctx.now, ...(q.required !== undefined ? { required: q.required } : {}),
       }));
       ctx.log(`📚 Aventura carregada: ${cmd.chapters.length} capítulo(s) e ${cmd.quests.length} quest(s).`, { type: 'capitulo', visibility: 'mestre' });
       return;
@@ -291,6 +312,7 @@ function execute(ctx: EngineContext, cmd: Command) {
       for (const other of state.chapters) if (other.status === 'ativo') other.status = 'concluido';
       c.status = 'ativo';
       state.activeChapterId = c.id;
+      ctx.emit({ type: 'banner', kind: 'capitulo', text: c.title, sub: `Capítulo ${c.order}` });
       ctx.log(`📖 Começa o capítulo: ${c.title}`, { type: 'capitulo' });
       return;
     }
@@ -424,6 +446,7 @@ function execute(ctx: EngineContext, cmd: Command) {
         expiresAt: cmd.expiresInSeconds ? ctx.now + cmd.expiresInSeconds * 1000 : null,
         onExpire: cmd.onExpire ?? null,
         createdAt: ctx.now,
+        ...(cmd.required !== undefined ? { required: cmd.required } : {}),
       });
       ctx.log(`📜 Nova side quest: ${cmd.title}`, { type: 'quest', visibility: cmd.hidden ? 'mestre' : 'publico' });
       return;
@@ -486,6 +509,85 @@ function assertFreeCell(state: TableState, x: number, y: number) {
   if (t) throw new CommandError(`Casa ocupada por ${t.name}`);
 }
 
+/**
+ * Monta uma cena pronta: mapa, monstros (à mostra/escondidos), baús (à mostra/escondidos),
+ * quests obrigatórias/opcionais e ativa o capítulo correspondente.
+ */
+function loadScene(ctx: EngineContext, key: string, keepMonsters: boolean) {
+  const { state } = ctx;
+  const scene = getScene(key);
+  if (!scene) throw new CommandError('Cena desconhecida');
+  if (state.combat) throw new CommandError('Encerre o combate antes de trocar de cena');
+  if ('preset' in scene.map) {
+    try {
+      state.map = buildPresetMap(scene.map.preset);
+    } catch {
+      throw new CommandError('Mapa da cena não encontrado');
+    }
+  } else {
+    const g = scene.map.generate;
+    state.map = generateMap(g.kind, g.width, g.height, g.seed);
+  }
+  if (scene.mood) state.map.mood = scene.mood;
+  state.map.name = scene.title;
+  if (!keepMonsters) state.tokens = state.tokens.filter((t) => t.kind === 'personagem');
+  const at = (p: { fx: number; fy: number }) => ({
+    x: Math.max(0, Math.min(state.map.width - 1, Math.round(p.fx * (state.map.width - 1)))),
+    y: Math.max(0, Math.min(state.map.height - 1, Math.round(p.fy * (state.map.height - 1)))),
+  });
+  // Heróis juntos no ponto de partida
+  const start = at(scene.start);
+  for (const t of state.tokens.filter((x) => x.kind === 'personagem')) {
+    const free = findFreeCell(state, t.id, start);
+    if (free) { t.x = free.x; t.y = free.y; }
+  }
+  relocateTokens(state);
+  // Objetos de cenário
+  for (const o of scene.objects ?? []) {
+    const p = at(o);
+    const free = findFreeCell(state, undefined, p, true);
+    if (free) state.map.tiles[free.y * state.map.width + free.x].o = { type: o.type, hp: OBJECTS[o.type].maxHp };
+  }
+  // Baús
+  for (const c of scene.chests) {
+    const free = findFreeCell(state, undefined, at(c), true);
+    if (free) placeChest(ctx, { x: free.x, y: free.y, loot: c.loot, dracmas: c.dracmas, lockDc: c.lockDc, tier: c.tier, hidden: c.hidden });
+  }
+  // Monstros
+  for (const m of scene.monsters) {
+    if (!getMonster(m.key)) continue;
+    const free = findFreeCell(state, undefined, at(m), true);
+    if (!free) continue;
+    const tok = createMonsterToken(m.key, free.x, free.y, ctx.id('mon'), { hidden: !!m.hidden, rng: ctx.rng, name: m.name });
+    state.tokens.push(tok);
+  }
+  // Capítulo: cria se ainda não existir e ativa
+  const chapTitle = `Cena: ${scene.title}`;
+  let chap = state.chapters.find((c) => c.title === chapTitle);
+  if (!chap) {
+    chap = { id: ctx.id('cap'), title: chapTitle, description: scene.goal, status: 'pendente', order: state.chapters.length + 1 };
+    state.chapters.push(chap);
+  }
+  for (const other of state.chapters) if (other.status === 'ativo') other.status = 'concluido';
+  chap.status = 'ativo';
+  state.activeChapterId = chap.id;
+  // Quests da cena (não duplica se recarregar)
+  scene.quests.forEach((q, i) => {
+    if (state.sideQuests.some((x) => x.title === q.title && x.status === 'ativa')) return;
+    state.sideQuests.push({
+      id: ctx.id(`qst${i}`), title: q.title, description: q.description, status: 'ativa', hidden: !!q.hidden, progress: 0, target: q.target ?? 1,
+      reward: '', rewardXp: q.rewardXp, rewardDracmas: q.rewardDracmas ?? 0, rewardItems: q.rewardItems ?? [],
+      expiresAtRound: null, expiresAt: null, onExpire: null, createdAt: ctx.now, required: q.required, sceneKey: scene.key,
+    });
+  });
+  state.sceneKey = scene.key;
+  ctx.emit({ type: 'banner', kind: 'capitulo', text: scene.title, sub: `Capítulo ${scene.chapter}` });
+  const hiddenM = scene.monsters.filter((m) => m.hidden).length;
+  const hiddenC = scene.chests.filter((c) => c.hidden).length;
+  ctx.log(`🎬 Cena carregada: ${scene.title}`, { type: 'capitulo' });
+  ctx.log(`(Mestre) ${scene.monsters.length} monstro(s) (${hiddenM} escondido(s)), ${scene.chests.length} baú(s) (${hiddenC} escondido(s)), ${scene.quests.length} quest(s).`, { type: 'capitulo', visibility: 'mestre' });
+}
+
 /** Reposiciona tokens que ficaram fora do mapa ou sobre casas bloqueadas. */
 function relocateTokens(state: TableState) {
   for (const t of state.tokens) {
@@ -500,7 +602,7 @@ function relocateTokens(state: TableState) {
   }
 }
 
-export function findFreeCell(state: TableState, ignoreId?: string, near?: { x: number; y: number }): { x: number; y: number } | null {
+export function findFreeCell(state: TableState, ignoreId?: string, near?: { x: number; y: number }, noObject = false): { x: number; y: number } | null {
   const cx = near?.x ?? Math.floor(state.map.width / 2);
   const cy = near?.y ?? Math.floor(state.map.height / 2);
   const maxR = Math.max(state.map.width, state.map.height);
@@ -509,7 +611,7 @@ export function findFreeCell(state: TableState, ignoreId?: string, near?: { x: n
       for (let x = cx - r; x <= cx + r; x++) {
         if (Math.max(Math.abs(x - cx), Math.abs(y - cy)) !== r) continue;
         const tile = tileAt(state.map, x, y);
-        if (tile && isWalkableTile(tile) && !TERRAIN[tile.t].hazard && !tokenAt(state, x, y, ignoreId)) return { x, y };
+        if (tile && isWalkableTile(tile) && !TERRAIN[tile.t].hazard && !tokenAt(state, x, y, ignoreId) && (!noObject || !tile.o)) return { x, y };
       }
     }
   }

@@ -72,7 +72,7 @@ export function projectStateFor(state: TableState, viewer: Actor): ProjectedStat
     // Conteúdo e CD dos baús ficam no servidor; jogador só sabe se está trancado
     map: {
       ...state.map,
-      tiles: state.map.tiles.map((t) => (t.o && (t.o.loot || t.o.lockDc || t.o.dracmas)
+      tiles: state.map.tiles.map((t) => (t.o?.hidden ? { ...t, o: null } : t.o && (t.o.loot || t.o.lockDc || t.o.dracmas)
         ? { ...t, o: { type: t.o.type, hp: t.o.hp, ...(t.o.lockDc ? { locked: true } : {}) } }
         : t)),
     },

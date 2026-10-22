@@ -13,7 +13,32 @@ const generateSchema = z.object({
   lora: z.string().max(200).nullable().optional(),
 });
 
+const paintSchema = z.object({
+  image: z.string().min(30).max(4_000_000),
+  signature: z.string().min(1).max(40),
+  tilesW: z.number().int().min(4).max(200),
+  tilesH: z.number().int().min(4).max(200),
+  kind: z.string().max(30).optional(),
+  mood: z.string().max(30).optional(),
+  style: z.string().max(30).optional(),
+  denoise: z.number().min(0.2).max(0.8).optional(),
+  checkpoint: z.string().max(200).optional(),
+  quality: z.enum(['rapida', 'boa', 'caprichada']).optional(),
+  prompt: z.string().max(1500).optional(),
+});
+
 export const ArtController = {
+  mapArt(req: Request, res: Response) {
+    res.json({ map: artService.mapArt(String(req.params.campaignId)) });
+  },
+  paintMap(req: Request, res: Response) {
+    const job = artService.paintMap(String(req.params.campaignId), paintSchema.parse(req.body ?? {}));
+    res.status(202).json({ job });
+  },
+  removeMapArt(req: Request, res: Response) {
+    artService.removeMapArt(String(req.params.campaignId));
+    res.status(204).end();
+  },
   list(_req: Request, res: Response) {
     res.json({ monsters: artService.list() });
   },

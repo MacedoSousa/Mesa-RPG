@@ -1,7 +1,7 @@
 import express from 'express';
 import type { Server } from 'http';
 import request from 'supertest';
-import { defaultWorkflow, fillWorkflow, profileFor } from '../../src/services/artService';
+import { defaultWorkflow, fillWorkflow, img2imgWorkflow, profileFor, workSize } from '../../src/services/artService';
 import { defaultPrompt } from '../../src/art/prompts';
 import { app, auth, closeAll, registerUser, resetData, setupDatabase } from '../helpers';
 
@@ -22,6 +22,7 @@ function fakeComfy() {
     if (polls < 2) return r.json({});
     r.json({ p1: { status: { status_str: 'success' }, outputs: { '9': { images: [{ filename: 'monstro_00001_.png', subfolder: 'mesa_rpg', type: 'output' }] } } } });
   });
+  f.post('/upload/image', (_q, r) => r.json({ name: 'mesa_mapa.png', subfolder: '', type: 'input' }));
   f.get('/view', (q, r) => (q.query.filename === 'monstro_00001_.png' ? r.type('png').send(PNG) : r.status(404).end()));
   return { f, received };
 }
@@ -120,5 +121,33 @@ describe('Arte dos monstros com ComfyUI local', () => {
 
     expect(defaultPrompt('harpia', 'vaso_grego')).toMatch(/black-figure pottery/);
     expect(defaultPrompt('harpia', 'inexistente')).toMatch(/painted illustration/);
+  });
+});
+
+describe('Mapa repintado pela IA (img2img)', () => {
+  it('envia o mapa, repinta mantendo o traçado e serve para a mesa', async () => {
+    const master = await registerUser('quiron');
+    const player = await registerUser('percy');
+    const cid = '11111111-2222-3333-4444-555555555555';
+    const image = `data:image/png;base64,${PNG.toString('base64')}`;
+    await request(app).post(`/api/art/maps/${cid}/paint`).set(auth(player)).send({ image, signature: 'abc', tilesW: 24, tilesH: 16 }).expect(403);
+    const res = await request(app).post(`/api/art/maps/${cid}/paint`).set(auth(master)).send({ image, signature: 'abc', tilesW: 24, tilesH: 16, kind: 'floresta', mood: 'noite', denoise: 0.45 }).expect(202);
+    const job = await waitJob(master.accessToken, res.body.job.id);
+    expect(job.status).toBe('pronto');
+    const wf = received.at(-1) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+    expect(wf['1'].class_type).toBe('LoadImage');
+    expect(wf['5'].inputs.denoise).toBe(0.45);
+    expect(String(wf['6'].inputs.text)).toMatch(/forest/);
+    const { body } = await request(app).get(`/api/art/maps/${cid}`).set(auth(player)).expect(200);
+    expect(body.map.signature).toBe('abc');
+    expect(body.map.url).toMatch(/\/art\/maps\//);
+    await request(app).delete(`/api/art/maps/${cid}`).set(auth(master)).expect(204);
+    expect((await request(app).get(`/api/art/maps/${cid}`).set(auth(player)).expect(200)).body.map).toBeNull();
+  });
+
+  it('tamanho de trabalho mantém a proporção em múltiplos de 64', () => {
+    expect(workSize(24, 16, 1024)).toEqual({ width: 1280, height: 832 });
+    const wf = img2imgWorkflow({ checkpoint: 'flux1-dev-fp8.safetensors', image: 'a.png', width: 512, height: 512, prompt: 'p', negative: 'n', seed: 1, denoise: 0.5 });
+    expect(wf['11'].class_type).toBe('FluxGuidance');
   });
 });

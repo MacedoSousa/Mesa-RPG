@@ -9,7 +9,7 @@ export type Tool =
   | { kind: 'damage'; amount: number; damageType: DamageType }
   /** Mestre escolheu um golpe do monstro: o próximo clique num alvo ataca. */
   | { kind: 'attack'; attackerId: string; attackIndex: number; label: string }
-  | { kind: 'chest'; loot: LootEntry[]; dracmas: number; lockDc: number | null; tier?: LootTier };
+  | { kind: 'chest'; loot: LootEntry[]; dracmas: number; lockDc: number | null; tier?: LootTier; hidden?: boolean };
 
 export function toolLabel(t: Tool): string {
   switch (t.kind) {
@@ -19,6 +19,6 @@ export function toolLabel(t: Tool): string {
     case 'element': return `🌪️ Elemento: ${t.element} (raio ${t.radius})`;
     case 'damage': return `💥 Dano ao cenário: ${t.amount} ${t.damageType}`;
     case 'attack': return `⚔️ ${t.label}: clique no alvo`;
-    case 'chest': return `🧰 Colocar baú${t.tier ? ` (${t.tier})` : ''}${t.lockDc ? ` trancado CD ${t.lockDc}` : ''}`;
+    case 'chest': return `🧰 Colocar baú${t.hidden ? ' escondido' : ''}${t.tier ? ` (${t.tier})` : ''}${t.lockDc ? ` trancado CD ${t.lockDc}` : ''}`;
   }
 }

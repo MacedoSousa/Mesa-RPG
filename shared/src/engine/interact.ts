@@ -14,7 +14,7 @@ export function validateLoot(loot: LootEntry[]) {
 /** Mestre coloca um baú (conteúdo manual ou sorteado por tabela). */
 export function placeChest(
   ctx: EngineContext,
-  o: { x: number; y: number; loot?: LootEntry[]; dracmas?: number; lockDc?: number | null; tier?: LootTier },
+  o: { x: number; y: number; loot?: LootEntry[]; dracmas?: number; lockDc?: number | null; tier?: LootTier; hidden?: boolean },
 ) {
   const tile = tileAt(ctx.state.map, o.x, o.y);
   if (!tile) throw new CommandError('Casa fora do mapa');
@@ -27,15 +27,15 @@ export function placeChest(
     dracmas += r.dracmas;
   }
   validateLoot(loot);
-  tile.o = { type: 'bau', hp: OBJECTS.bau.maxHp, loot, dracmas, ...(o.lockDc ? { lockDc: o.lockDc } : {}) };
+  tile.o = { type: 'bau', hp: OBJECTS.bau.maxHp, loot, dracmas, ...(o.lockDc ? { lockDc: o.lockDc } : {}), ...(o.hidden ? { hidden: true } : {}) };
   const desc = [...loot.map((l) => `${l.quantity}× ${getItem(l.itemKey)!.name}`), dracmas ? `${dracmas} dracmas` : ''].filter(Boolean).join(', ');
-  ctx.log(`🧰 Baú colocado em (${o.x}, ${o.y})${o.lockDc ? ` — trancado CD ${o.lockDc}` : ''}: ${desc || 'vazio'}${o.tier ? ` (${LOOT_TABLES[o.tier].label})` : ''}`, { type: 'mapa', visibility: 'mestre' });
+  ctx.log(`🧰 Baú${o.hidden ? ' ESCONDIDO' : ''} colocado em (${o.x}, ${o.y})${o.lockDc ? ` — trancado CD ${o.lockDc}` : ''}: ${desc || 'vazio'}${o.tier ? ` (${LOOT_TABLES[o.tier].label})` : ''}`, { type: 'mapa', visibility: 'mestre' });
 }
 
 /** Herói ao lado abre o baú (Ação no combate). Trancado: teste de Prestidigitação (DES) ou Atletismo (FOR). */
 export function openChest(ctx: EngineContext, t: Token, x: number, y: number) {
   const tile = tileAt(ctx.state.map, x, y);
-  if (!tile?.o || (tile.o.type !== 'bau' && tile.o.type !== 'espolio')) throw new CommandError(tile?.o?.type === 'bau_aberto' ? 'Este baú já foi aberto' : 'Não há baú aí');
+  if (!tile?.o || tile.o.hidden || (tile.o.type !== 'bau' && tile.o.type !== 'espolio')) throw new CommandError(tile?.o?.type === 'bau_aberto' ? 'Este baú já foi aberto' : 'Não há baú aí');
   const bag = tile.o.type === 'espolio';
   if (gridDistance(t, { x, y }) > 1) throw new CommandError(bag ? 'Chegue perto do espólio para recolher' : 'Chegue ao lado do baú para abrir');
   const eco = economyOf(ctx, t);
@@ -61,7 +61,7 @@ export function openChest(ctx: EngineContext, t: Token, x: number, y: number) {
   const loot = chest.loot ?? [];
   const dracmas = chest.dracmas ?? 0;
   tile.o = bag ? undefined : { type: 'bau_aberto', hp: OBJECTS.bau_aberto.maxHp };
-  ctx.emit({ type: 'destruicao', x, y });
+  ctx.emit(bag ? { type: 'destruicao', x, y } : { type: 'bau', x, y });
   const desc = [...loot.map((l) => `${l.quantity}× ${getItem(l.itemKey)?.name ?? l.itemKey}`), dracmas ? `${dracmas} dracmas` : ''].filter(Boolean).join(', ');
   ctx.log(bag ? `💰 ${t.name} recolhe o espólio: ${desc || 'nada de valor'}!` : `🧰 ${t.name} abre o baú e encontra: ${desc || 'nada… só poeira e uma teia de aranha'}!`, { type: 'recompensa' });
   if (t.characterId && (loot.length || dracmas)) {

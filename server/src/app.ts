@@ -25,7 +25,7 @@ export function createApp(opts: { authRateLimit?: boolean; serveClients?: boolea
     }),
   );
   app.use(cors({ origin: corsOrigins, credentials: true }));
-  app.use(express.json({ limit: '2mb' }));
+  app.use(express.json({ limit: '5mb' }));
   app.use(cookieParser());
 
   app.use('/api', buildRoutes({ authRateLimit: opts.authRateLimit }));

@@ -98,6 +98,7 @@ export function QuestsPanel({ state }: { state: ProjectedState }) {
           <div key={q.id} className={cx('rounded-lg p-2 text-sm', q.status === 'ativa' ? 'bg-emerald-500/10 ring-1 ring-emerald-500/40' : 'bg-white/5 opacity-70')}>
             <div className="flex items-center gap-2">
               <span className="flex-1 font-semibold">{q.title}</span>
+              {q.required !== undefined && <Badge color={q.required ? 'rose' : 'sky'}>{q.required ? 'obrigatória' : 'opcional'}</Badge>}
               {q.hidden && <Badge color="violet">oculta</Badge>}
               <Badge color={q.status === 'ativa' ? 'emerald' : q.status === 'concluida' ? 'sky' : 'rose'}>{q.status}</Badge>
             </div>

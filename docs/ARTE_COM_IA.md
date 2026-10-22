@@ -124,13 +124,40 @@ npm run art -- harpia cerbero
 
 As imagens ficam em `server/data/art/monsters/` (uma `.png` + um `.json` com a descrição e a semente). Copie a pasta para guardar ou levar para outro PC.
 
-## 6. Dicas
+## 6. Pintar o mapa da mesa
+
+Na aba **🗺️ Mapa** do Host, o quadro **🎨 Pintar o mapa com IA** repinta o mapa atual:
+
+1. A mesa desenha o terreno (sem fichas nem objetos) e envia a imagem ao ComfyUI.
+2. A IA repinta por cima (img2img). O controle **Fiel ao desenho ↔ mais criativo** define o quanto ela pode mudar:
+   - perto de "fiel", paredes e árvores ficam exatamente no lugar;
+   - perto de "criativo", a pintura fica mais bonita, mas pode mexer no traçado.
+3. A pintura aparece para todos, por baixo de objetos, fichas, bonecos e efeitos. A escuridão da noite e do Submundo continua valendo.
+
+Se o terreno mudar (outro mapa, uma parede destruída), a mesa volta ao desenho original até você pintar de novo. Cada jogador pode alternar entre **🎨 Mapa pintado** e **🗺️ Mapa desenhado** no canto do mapa.
+
+Tempo na RTX 2060 Super (estimado):
+- SDXL Turbo: ~15 s.
+- SDXL: ~1 min.
+- FLUX: 2 a 4 min.
+
+O arquivo fica em `server/data/art/maps/`.
+
+## 7. Modo Ultra
+
+Em PCs com placa de vídeo dedicada, o botão do mapa mostra **💎 Bonecos · ultra**, ligado sozinho na primeira vez. O Ultra traz:
+- bonecos em resolução maior, com reflexos nos metais e luz de contorno;
+- no criador de personagem, brilho (bloom), sombras mais finas e supersampling.
+
+No celular, o padrão continua **alta**. Use **leve** em aparelhos mais fracos.
+
+## 8. Dicas
 
 - **Quer outro estilo?** Edite a descrição. Exemplos: *"…, watercolor"*, *"…, dark souls style"*, *"…, cute chibi"*.
 - **A placa esquentou ou o PC travou?** Escolha a qualidade **Rápida (18 passos)** no painel.
 - **Jogo e IA ao mesmo tempo:** gere a arte **antes** da sessão. Durante o jogo, a GPU fica livre para o navegador.
 
-## 7. Usuário avançado: FLUX ou workflow próprio
+## 9. Usuário avançado: FLUX ou workflow próprio
 
 O padrão usa só os nós nativos do ComfyUI (Load Checkpoint → KSampler → VAE Decode → redimensionar para 512 → Save Image). Para usar **FLUX** ou outro fluxo:
 

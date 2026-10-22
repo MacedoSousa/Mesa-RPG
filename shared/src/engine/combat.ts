@@ -342,6 +342,7 @@ export function castDivinePower(ctx: EngineContext, t: Token, at: Point) {
   const best = Math.max(t.abilityMods.carisma, t.abilityMods.sabedoria, t.abilityMods.inteligencia);
   const dc = 8 + t.proficiency + best;
   ctx.log(`✨ ${t.name} invoca ${p.label}!`, { type: 'combate' });
+  ctx.emit({ type: 'poder', tokenId: t.id, divinity: t.look3d?.divinity, x: at.x, y: at.y, radius: p.radius ?? 0 });
   applyElementArea(ctx, at.x, at.y, p.radius ?? 0, p.element, {
     damage: p.damage, damageType: elementDamageType(p.element), saveDc: dc, source: p.label,
   });

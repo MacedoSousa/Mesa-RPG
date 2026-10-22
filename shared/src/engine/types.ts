@@ -35,6 +35,8 @@ export interface MapObject {
   lockDc?: number;
   /** Projeção para jogadores: só sabem SE está trancado. */
   locked?: boolean;
+  /** Escondido pelo Mestre: jogadores não veem e não abrem até ser revelado. */
+  hidden?: boolean;
 }
 
 export interface Tile {
@@ -160,6 +162,10 @@ export interface SideQuest {
   rewardItems?: LootEntry[];
   onExpire: QuestExpireTrigger | null;
   createdAt: number;
+  /** Quest obrigatória da história (as outras são opcionais). */
+  required?: boolean;
+  /** Cena pronta que criou a quest (o rastreador mostra só as da cena atual). */
+  sceneKey?: string;
 }
 
 export type CheckKind = 'pericia' | 'atributo' | 'resistencia';
@@ -221,6 +227,8 @@ export interface TableState {
   checks?: PendingCheck[];
   /** Opções da mesa definidas pelo Mestre. */
   options?: { monsterLoot?: boolean };
+  /** Cena pronta carregada pelo Mestre (chave em SCENES). */
+  sceneKey?: string | null;
   log: LogEntry[];
   /** Incrementa a cada comando aplicado (ordem/ressincronização). */
   seq: number;
@@ -238,7 +246,12 @@ export type Fx =
   | { type: 'errou'; tokenId: string }
   | { type: 'ataque'; tokenId: string; targetId: string }
   | { type: 'dado'; total: number; formula: string; visibility: Visibility }
-  | { type: 'movimento'; tokenId: string; path: { x: number; y: number }[] };
+  | { type: 'movimento'; tokenId: string; path: { x: number; y: number }[] }
+  | { type: 'narracao'; title?: string; text: string }
+  | { type: 'banner'; text: string; sub?: string; kind: 'capitulo' | 'turno' | 'nivel' | 'vitoria' }
+  | { type: 'revelar'; x: number; y: number }
+  | { type: 'bau'; x: number; y: number }
+  | { type: 'poder'; tokenId: string; divinity?: string; x?: number; y?: number; radius?: number };
 
 export type Role = 'MASTER' | 'PLAYER';
 

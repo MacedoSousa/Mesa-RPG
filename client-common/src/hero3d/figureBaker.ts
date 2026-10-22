@@ -4,6 +4,7 @@
  * leste espelhado) e 5 estados animados.
  */
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { BakeState, Figure } from './figure';
 
 export type Dir = 's' | 'e' | 'n';
@@ -33,10 +34,15 @@ export interface FigureAtlas {
   frames: Record<Dir, Record<BakeState, { x: number; y: number }[]>>;
 }
 
-let shared: { renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.OrthographicCamera } | null = null;
+let shared: { renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.OrthographicCamera; ultra: boolean } | null = null;
 
-function setup() {
-  if (shared) return shared;
+function setup(ultra = false) {
+  if (shared && shared.ultra === ultra) return shared;
+  if (shared) {
+    shared.renderer.dispose();
+    shared.renderer.forceContextLoss();
+    shared = null;
+  }
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(1);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -51,14 +57,26 @@ function setup() {
   const fill = new THREE.DirectionalLight('#9fb8ff', 0.5);
   fill.position.set(4, 2, -2);
   scene.add(fill);
+  if (ultra) {
+    // Ultra (placa de vídeo dedicada): reflexos nos metais e luz de contorno, como num jogo de PC
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    scene.environmentIntensity = 0.45;
+    pmrem.dispose();
+    const rim = new THREE.DirectionalLight('#ffe9c4', 1.6);
+    rim.position.set(2, 3, -6);
+    scene.add(rim);
+    key.intensity = 2.3;
+    renderer.toneMappingExposure = 1.1;
+  }
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
-  shared = { renderer, scene, camera };
+  shared = { renderer, scene, camera, ultra };
   return shared;
 }
 
 /** Desenha todos os quadros de uma figura numa única folha. */
 export async function bakeFigure(fig: Figure, unitPx = 34, yieldFn: () => Promise<void> = async () => undefined): Promise<FigureAtlas> {
-  const { renderer, scene, camera } = setup();
+  const { renderer, scene, camera } = setup(unitPx >= 50);
   const H = fig.height;
   const R = Math.max(0.6, fig.radius);
   // Margens para golpes, armas compridas e investidas

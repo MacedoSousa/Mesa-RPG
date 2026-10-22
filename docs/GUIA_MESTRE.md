@@ -4,6 +4,8 @@ Este guia explica **como conduzir uma sessão** usando o HUD do Mestre (`http://
 
 ---
 
+> 🎬 **É a sua primeira vez?** Leia antes [Sua primeira sessão como Mestre](GUIA_PRIMEIRA_SESSAO.md) e use a aba **🎬 Roteiro**: ela carrega cada cena da aventura com mapa, monstros, baús escondidos, quests e dicas.
+
 ## 1. Antes da primeira sessão (checklist)
 
 - [ ] Servidor rodando (`npm start`) e `http://localhost:3333/api/health` mostrando `"database": "ok"`.
