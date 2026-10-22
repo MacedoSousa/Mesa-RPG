@@ -139,7 +139,7 @@ DOMINIO=mesarpgweb.duckdns.org ./scripts/corrigir-env.sh
 ```
 - Remove `\r` do Windows, aspas e espaços sobrando, e chaves repetidas.
 - Completa o que falta com o `.env.example`.
-- Troca os segredos JWT de exemplo por segredos fortes.
+- Troca os segredos JWT fracos (de exemplo, curtos ou com palavras comuns) por segredos fortes. Para trocar de qualquer jeito: `./scripts/corrigir-env.sh --trocar-jwt`. Todos precisam entrar de novo uma vez; contas e heróis não se perdem.
 - Libera o endereço do DuckDNS.
 - Testa o banco e, se não conectar, procura onde ele está.
 

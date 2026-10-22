@@ -3,6 +3,7 @@
 #
 # Uso:  ./scripts/corrigir-env.sh
 #       DOMINIO=mesarpgweb.duckdns.org ./scripts/corrigir-env.sh   (libera também o endereço do DuckDNS)
+#       ./scripts/corrigir-env.sh --trocar-jwt                      (gera segredos JWT novos de qualquer jeito)
 #
 # O que ele corrige:
 #   - cria o .env a partir do .env.example se não existir
@@ -13,6 +14,8 @@
 #   - acerta PORT e NODE_ENV, e libera o endereço do DuckDNS
 #   - testa o DATABASE_URL e, se não conectar, procura o banco (Docker ou Ubuntu)
 set -euo pipefail
+TROCAR_JWT=0
+for a in "$@"; do [ "$a" = "--trocar-jwt" ] && TROCAR_JWT=1; done
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 ENV="$REPO/server/.env"
 EXAMPLE="$REPO/server/.env.example"
@@ -28,9 +31,10 @@ echo "💾 Backup: $BACKUP"
 SECRET1="$(openssl rand -hex 48 2>/dev/null || head -c 48 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 SECRET2="$(openssl rand -hex 48 2>/dev/null || head -c 48 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 
-python3 -I - "$ENV" "$EXAMPLE" "$SECRET1" "$SECRET2" "${DOMINIO:-}" <<'PY'
+python3 -I - "$ENV" "$EXAMPLE" "$SECRET1" "$SECRET2" "${DOMINIO:-}" "$TROCAR_JWT" <<'PY'
 import re, sys
-env_path, ex_path, s1, s2, dominio = sys.argv[1:6]
+env_path, ex_path, s1, s2, dominio, force_jwt = sys.argv[1:7]
+force_jwt = force_jwt == '1'
 KEY = re.compile(r'^\s*(?:export\s+)?([A-Z][A-Z0-9_]*)\s*=\s*(.*)$')
 PLACEHOLDERS = {'troque-este-segredo-de-acesso-por-algo-bem-longo', 'troque-este-segredo-de-refresh-por-outro-valor'}
 
@@ -81,10 +85,21 @@ for k, v in example.items():
     if k not in values:
         setv(k, v, 'faltava (valor do exemplo)')
 
+def weak(v):
+    """Segredo fraco: curto, de exemplo, com palavras comuns ou com poucos caracteres diferentes."""
+    low = v.lower()
+    if v in PLACEHOLDERS or len(v) < 32 or len(set(v)) < 12:
+        return True
+    if re.search(r'troque|segredo|secret|senha|password|changeme|mesa|olimpo|smoke|teste|test|1234|abcd|qwerty|aaaa|bbbb', low):
+        return True
+    return False
+
 for k, s in (('JWT_SECRET', s1), ('JWT_REFRESH_SECRET', s2)):
     v = values.get(k, '')
-    if v in PLACEHOLDERS or len(v) < 32:
-        setv(k, s, 'segredo novo e forte gerado (todos precisarão entrar de novo)')
+    if force_jwt:
+        setv(k, s, 'segredo novo gerado (--trocar-jwt); todos precisarão entrar de novo')
+    elif weak(v):
+        setv(k, s, 'era fraco: segredo novo e forte gerado (todos precisarão entrar de novo)')
 if values.get('JWT_SECRET') == values.get('JWT_REFRESH_SECRET'):
     setv('JWT_REFRESH_SECRET', s2, 'era igual ao JWT_SECRET: gerei outro')
 

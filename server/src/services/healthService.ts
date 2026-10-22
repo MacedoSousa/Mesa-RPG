@@ -55,9 +55,10 @@ export async function systemCheck(): Promise<{ ok: boolean; checks: Check[]; upt
 
   // Configurações (.env)
   const envFile = process.env.DOTENV_CONFIG_PATH ?? path.resolve(__dirname, '../../.env');
-  const weakSecret = DEFAULT_SECRETS.includes(env.JWT_SECRET) || DEFAULT_SECRETS.includes(env.JWT_REFRESH_SECRET);
+  const weak = (v: string) => DEFAULT_SECRETS.includes(v) || v.length < 32 || new Set(v).size < 12 || /troque|segredo|secret|senha|password|changeme|mesa|olimpo|smoke|teste|test|1234|abcd|qwerty/i.test(v);
+  const weakSecret = weak(env.JWT_SECRET) || weak(env.JWT_REFRESH_SECRET) || env.JWT_SECRET === env.JWT_REFRESH_SECRET;
   add('config', 'Configurações (server/.env)', !existsSync(envFile) ? 'aviso' : weakSecret ? 'aviso' : 'ok',
-    !existsSync(envFile) ? 'server/.env não encontrado (usando variáveis do sistema)' : weakSecret ? 'Carregado, mas os segredos JWT ainda são os de exemplo: troque!' : `Carregado · porta ${env.PORT} · ${env.NODE_ENV}`);
+    !existsSync(envFile) ? 'server/.env não encontrado (usando variáveis do sistema)' : weakSecret ? 'Carregado, mas os segredos JWT são fracos: rode ./scripts/corrigir-env.sh --trocar-jwt' : `Carregado · porta ${env.PORT} · ${env.NODE_ENV}`);
 
   // Imagens
   try {
