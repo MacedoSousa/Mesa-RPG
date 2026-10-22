@@ -1,3 +1,4 @@
+import type { FigureRecipe } from '@mesa/shared';
 import { useEffect, useRef, useState } from 'react';
 import { cx } from '../index';
 import { HeroStage, type HeroAction, type HeroConfig } from './heroKit';
@@ -36,10 +37,12 @@ function webglAvailable() {
 }
 
 /** Palco 3D do herói com rotação por arrasto, zoom e botões de animação. */
-export default function HeroViewer({ config, monster, focus = 'corpo', className, compact, onReady, controls = true }: {
+export default function HeroViewer({ config, monster, recipe, focus = 'corpo', className, compact, onReady, controls = true }: {
   config?: HeroConfig;
   /** Mostra um monstro do bestiário em vez de um herói. */
   monster?: string;
+  /** Boneco da Oficina (receita). */
+  recipe?: FigureRecipe;
   focus?: 'corpo' | 'rosto';
   className?: string;
   compact?: boolean;
@@ -51,7 +54,7 @@ export default function HeroViewer({ config, monster, focus = 'corpo', className
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState<string | null>(null);
   const [showActions, setShowActions] = useState(!compact);
-  const key = JSON.stringify(monster ? { monster } : { hero: config });
+  const key = JSON.stringify(recipe ? { recipe } : monster ? { monster } : { hero: config });
 
   useEffect(() => {
     if (!host.current) return;
@@ -83,7 +86,8 @@ export default function HeroViewer({ config, monster, focus = 'corpo', className
   }, []);
 
   useEffect(() => {
-    if (monster) void stage.current?.show({ monster });
+    if (recipe) void stage.current?.show({ recipe });
+    else if (monster) void stage.current?.show({ monster });
     else if (config) void stage.current?.show({ hero: config });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
@@ -119,7 +123,7 @@ export default function HeroViewer({ config, monster, focus = 'corpo', className
               )}
               {showActions && (
                 <div className="flex flex-wrap justify-center gap-1">
-                  {ACTIONS.filter((a) => !monster || MONSTER_ACTIONS.includes(a.key)).map((a) => (
+                  {ACTIONS.filter((a) => !(monster || recipe) || MONSTER_ACTIONS.includes(a.key)).map((a) => (
                     <button key={a.key} type="button" onClick={() => stage.current?.play(a.key)} className="rounded-full bg-slate-900/80 px-2.5 py-1 text-xs text-slate-100 ring-1 ring-white/10 hover:bg-amber-500/30">
                       {a.label}
                     </button>

@@ -238,6 +238,38 @@ function execute(ctx: EngineContext, cmd: Command) {
       ctx.log(cmd.hidden ? `🙈 ${label} escondido em (${cmd.x}, ${cmd.y})` : `✨ Vocês descobrem: ${label}!`, { type: 'mapa', visibility: cmd.hidden ? 'mestre' : 'publico' });
       return;
     }
+    case 'figure.save': {
+      const list = (state.figures ??= []);
+      const existing = cmd.id ? list.find((f) => f.id === cmd.id) : undefined;
+      if (existing) {
+        existing.name = cmd.name;
+        existing.recipe = cmd.recipe;
+      } else {
+        if (list.length >= 60) throw new CommandError('A oficina já tem 60 bonecos: apague algum antes');
+        list.push({ id: ctx.id('fig'), name: cmd.name, recipe: cmd.recipe, createdAt: ctx.now });
+      }
+      ctx.log(`🧌 Boneco salvo na oficina: ${cmd.name}`, { type: 'sistema', visibility: 'mestre' });
+      return;
+    }
+    case 'figure.delete':
+      state.figures = (state.figures ?? []).filter((f) => f.id !== cmd.id);
+      return;
+    case 'figure.assign': {
+      if (cmd.tokenId) {
+        const t = requireToken(state, cmd.tokenId);
+        t.figure = cmd.recipe;
+        ctx.log(`🧌 ${t.name} ${cmd.recipe ? 'ganhou um visual novo' : 'voltou ao visual da espécie'}`, { type: 'sistema', visibility: 'mestre' });
+        return;
+      }
+      if (!cmd.monsterKey || !getMonster(cmd.monsterKey)) throw new CommandError('Escolha um monstro ou um token');
+      const looks = (state.monsterLooks ??= {});
+      if (cmd.recipe) looks[cmd.monsterKey] = cmd.recipe;
+      else delete looks[cmd.monsterKey];
+      // Tokens que usavam o visual da espécie acompanham a troca
+      for (const t of state.tokens) if (t.monsterKey === cmd.monsterKey) t.figure = cmd.recipe;
+      ctx.log(`🧌 ${getMonster(cmd.monsterKey)!.label}: ${cmd.recipe ? 'visual novo nesta campanha' : 'visual padrão do bestiário'}`, { type: 'sistema', visibility: 'mestre' });
+      return;
+    }
     case 'table.narrate':
       ctx.emit({ type: 'narracao', title: cmd.title, text: cmd.text });
       ctx.log(`📖 ${cmd.title ? `${cmd.title}: ` : ''}${cmd.text}`, { type: 'capitulo' });
@@ -320,6 +352,7 @@ function execute(ctx: EngineContext, cmd: Command) {
       if (!getMonster(cmd.monsterKey)) throw new CommandError('Monstro desconhecido');
       assertFreeCell(state, cmd.x, cmd.y);
       const tok = createMonsterToken(cmd.monsterKey, cmd.x, cmd.y, ctx.id('mon'), { hidden: cmd.hidden, rng: ctx.rng, rollHp: cmd.rollHp, name: cmd.name });
+      tok.figure = cmd.figure ?? state.monsterLooks?.[cmd.monsterKey] ?? null;
       state.tokens.push(tok);
       if (state.combat) {
         const init = roll('1d20', ctx.rng).total + tok.initiativeBonus;
@@ -559,6 +592,7 @@ function loadScene(ctx: EngineContext, key: string, keepMonsters: boolean) {
     const free = findFreeCell(state, undefined, at(m), true);
     if (!free) continue;
     const tok = createMonsterToken(m.key, free.x, free.y, ctx.id('mon'), { hidden: !!m.hidden, rng: ctx.rng, name: m.name });
+    tok.figure = state.monsterLooks?.[m.key] ?? null;
     state.tokens.push(tok);
   }
   // Capítulo: cria se ainda não existir e ativa

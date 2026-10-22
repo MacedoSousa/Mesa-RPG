@@ -11,11 +11,11 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { ultraGraphics } from '../figureLayer';
-import { DIVINITIES, baseItemKey } from '@mesa/shared';
+import { DIVINITIES, baseItemKey, type FigureRecipe } from '@mesa/shared';
 import type { BodyKey, HeroLook, PortraitSpec } from '../index';
 import { buildRigFigure, markOwn, mat, mix, skinCells, type AtlasChange, type Figure, type HeadMetrics, type HeroAction, type RigSpec } from './figure';
 import { cyclopsEyeMesh } from './creatures';
-import { buildMonsterFigure } from './monsters3d';
+import { buildFigureFromRecipe, buildMonsterFigure } from './monsters3d';
 
 export type { HeroAction } from './figure';
 
@@ -50,7 +50,7 @@ export interface HeroConfig {
 }
 
 /** O que mostrar no palco: um herói (ficha) ou um monstro do bestiário. */
-export type StageSubject = { hero: HeroConfig } | { monster: string };
+export type StageSubject = { hero: HeroConfig } | { monster: string } | { recipe: FigureRecipe };
 
 export function heroBody(cfg: HeroConfig): BodyKey {
   const look: HeroLook = cfg.portrait?.look ?? {};
@@ -343,6 +343,8 @@ export class HeroStage {
   private zoomTarget = 0;
   private config: HeroConfig | null = null;
   private subjectKey = '';
+  private lastRecipe: string | null = null;
+  private lastKind = '';
   private resizeObs: ResizeObserver;
   private disposed = false;
   /** Ultra: brilho (bloom) e supersampling, para placas de vídeo dedicadas. */
@@ -513,17 +515,22 @@ export class HeroStage {
     const cfg = 'hero' in subject ? subject.hero : null;
     this.config = cfg;
     this.setDivineColor(cfg ? DIVINE_COLOR[cfg.divinity] ?? '#cbd5e1' : '#ff5a3a');
+    this.auraLight.intensity = cfg ? 2 : 0.6; // monstros: brilho do pedestal discreto (não "queima" a barriga)
     const token = ++this.loadToken;
     this.onLoading?.(true);
     try {
-      const fig = 'hero' in subject ? await buildHeroFigure(subject.hero) : await buildMonsterFigure(subject.monster);
+      const fig = 'hero' in subject ? await buildHeroFigure(subject.hero) : 'recipe' in subject ? await buildFigureFromRecipe(subject.recipe) : await buildMonsterFigure(subject.monster);
       if (token !== this.loadToken || this.disposed) { fig.dispose(); return; }
       const old = this.hero;
       if (old) { this.scene.remove(old.root); old.dispose(); }
       this.hero = fig;
       this.scene.add(fig.root);
       // Feras de quatro patas ficam ilegíveis de frente: começa em três-quartos
-      if ('monster' in subject) this.yaw = -0.65;
+      const kind = 'hero' in subject ? 'hero' : 'recipe' in subject ? 'recipe' : 'monster';
+      if (kind !== 'hero' && (kind !== this.lastKind || kind === 'monster')) this.yaw = -0.65;
+      this.lastKind = kind;
+      if ('recipe' in subject && this.lastRecipe && this.lastRecipe !== key) this.play('atacar');
+      this.lastRecipe = 'recipe' in subject ? key : null;
       // Reações às mudanças, como num criador de personagem de videogame
       if (prev && cfg) {
         if (prev.divinity !== cfg.divinity) this.play('reclamado');
@@ -588,6 +595,9 @@ export class HeroStage {
     const dist = THREE.MathUtils.lerp(fitDist, H * 1.45, this.zoom);
     this.camera.position.set(0, look.y + THREE.MathUtils.lerp(H * 0.12, 0.05, this.zoom), dist);
     this.camera.lookAt(look);
+    // Névoa acompanha a distância: bonecos grandes (golem, Cérbero) não ficam apagados
+    const fog = this.scene.fog as THREE.Fog | null;
+    if (fog) { fog.near = dist * 0.9 + 1; fog.far = dist * 2.2 + 6; }
     this.faceLight.position.copy(this.camera.position).add(new THREE.Vector3(0.6, 0.8, 0));
     this.faceLight.target.position.copy(look);
 

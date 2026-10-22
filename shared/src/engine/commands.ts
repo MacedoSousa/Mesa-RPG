@@ -1,3 +1,4 @@
+import { figureRecipeSchema } from '../content/figures';
 import { z } from 'zod';
 import { CONDITION_KEYS } from '../content/conditions';
 import { DAMAGE_TYPES } from '../content/items';
@@ -63,7 +64,7 @@ export const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('chapter.update'), id, title: z.string().trim().min(1).max(80).optional(), description: z.string().max(2000).optional(), status: z.enum(['pendente', 'ativo', 'concluido']).optional() }),
   z.object({ type: z.literal('chapter.delete'), id }),
   z.object({ type: z.literal('chapter.activate'), id }),
-  z.object({ type: z.literal('monster.spawn'), monsterKey: z.string().min(1), x: coord, y: coord, hidden: z.boolean().default(false), name: z.string().max(40).optional(), rollHp: z.boolean().default(false) }),
+  z.object({ type: z.literal('monster.spawn'), monsterKey: z.string().min(1), x: coord, y: coord, hidden: z.boolean().default(false), name: z.string().max(40).optional(), rollHp: z.boolean().default(false), figure: figureRecipeSchema.optional() }),
   z.object({
     type: z.literal('token.update'), tokenId: id,
     patch: z.object({
@@ -143,6 +144,12 @@ export const commandSchema = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('object.reveal'), x: coord, y: coord, hidden: z.boolean().optional() }),
   z.object({ type: z.literal('scene.load'), sceneKey: z.string().min(1).max(60), keepMonsters: z.boolean().optional() }),
+  z.object({ type: z.literal('figure.save'), id: id.optional(), name: z.string().trim().min(1).max(40), recipe: figureRecipeSchema }),
+  z.object({ type: z.literal('figure.delete'), id }),
+  z.object({
+    type: z.literal('figure.assign'), recipe: figureRecipeSchema.nullable(),
+    monsterKey: z.string().min(1).max(60).optional(), tokenId: id.optional(),
+  }),
   z.object({ type: z.literal('table.narrate'), title: z.string().max(80).optional(), text: z.string().trim().min(1).max(3000) }),
   z.object({
     type: z.literal('adventure.load'),

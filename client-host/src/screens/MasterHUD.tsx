@@ -9,10 +9,11 @@ import { CombatPanel } from '../panels/CombatPanel';
 import { TablePanel } from '../panels/TablePanel';
 import { ChaptersPanel, QuestsPanel } from '../panels/StoryPanels';
 import { ScriptPanel } from '../panels/ScriptPanel';
+import { FiguresPanel } from '../panels/FigurePanel';
 import { MapPanel, MonstersPanel, PlayersPanel, SavesPanel } from '../panels/WorldPanels';
 import { toolLabel, type Tool } from '../tools';
 
-type Panel = 'roteiro' | 'combate' | 'testes' | 'capitulos' | 'quests' | 'monstros' | 'arte' | 'jogadores' | 'mapa' | 'saves';
+type Panel = 'roteiro' | 'bonecos' | 'combate' | 'testes' | 'capitulos' | 'quests' | 'monstros' | 'arte' | 'jogadores' | 'mapa' | 'saves';
 
 interface HealthCheck { key: string; label: string; level: 'ok' | 'aviso' | 'erro'; detail: string }
 
@@ -104,7 +105,7 @@ export function MasterHUD({ campaignId }: { campaignId: string }) {
       case 'paint':
         return queuePaint(cell);
       case 'spawn':
-        return void send({ type: 'monster.spawn', monsterKey: tool.monsterKey, x: cell.x, y: cell.y, hidden: tool.hidden, rollHp: false });
+        return void send({ type: 'monster.spawn', monsterKey: tool.monsterKey, x: cell.x, y: cell.y, hidden: tool.hidden, rollHp: false, ...(tool.figure ? { figure: tool.figure } : {}) });
       case 'element':
         return void send({ type: 'map.element', x: cell.x, y: cell.y, radius: tool.radius, element: tool.element, damage: tool.damage || undefined });
       case 'damage':
@@ -171,7 +172,7 @@ export function MasterHUD({ campaignId }: { campaignId: string }) {
             onChange={setPanel}
             tabs={[
               { key: 'roteiro', label: '🎬 Roteiro' }, { key: 'combate', label: '⚔️ Combate' }, { key: 'testes', label: '🎯 Testes & 🎁' }, { key: 'capitulos', label: '📖 Fases' }, { key: 'quests', label: '📜 Quests' },
-              { key: 'monstros', label: '👹 Monstros' }, { key: 'arte', label: '🎨 Arte' }, { key: 'jogadores', label: '🧑‍🤝‍🧑 Jogadores' }, { key: 'mapa', label: '🗺️ Mapa' }, { key: 'saves', label: '💾 Saves' },
+              { key: 'monstros', label: '👹 Monstros' }, { key: 'bonecos', label: '🧌 Bonecos' }, { key: 'arte', label: '🎨 Arte' }, { key: 'jogadores', label: '🧑‍🤝‍🧑 Jogadores' }, { key: 'mapa', label: '🗺️ Mapa' }, { key: 'saves', label: '💾 Saves' },
             ]}
           />
           <div className="min-h-0 flex-1 overflow-y-auto p-3">
@@ -180,6 +181,7 @@ export function MasterHUD({ campaignId }: { campaignId: string }) {
             {panel === 'testes' && <TablePanel state={state} selectedId={selected} setTool={setTool} />}
             {panel === 'capitulos' && <ChaptersPanel state={state} />}
             {panel === 'quests' && <QuestsPanel state={state} />}
+            {panel === 'bonecos' && <FiguresPanel state={state} selectedId={selected} setTool={setTool} />}
             {panel === 'monstros' && <MonstersPanel tool={tool} setTool={setTool} />}
             {panel === 'arte' && <ArtPanel />}
             {panel === 'jogadores' && <PlayersPanel campaignId={campaignId} state={state} />}

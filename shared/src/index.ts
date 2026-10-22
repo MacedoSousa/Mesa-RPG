@@ -30,3 +30,4 @@ export * from './content/loot';
 export * from './content/adventures';
 export * from './engine/mapgen';
 export * from './content/scenes';
+export * from './content/figures';

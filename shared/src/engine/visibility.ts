@@ -77,6 +77,8 @@ export function projectStateFor(state: TableState, viewer: Actor): ProjectedStat
         : t)),
     },
     checks: (state.checks ?? []).map((c) => (c.secretDc ? { ...c, dc: 0 } : c)),
+    // A oficina de bonecos é do Mestre (os tokens já levam o visual)
+    figures: undefined,
     sideQuests: state.sideQuests.filter((q) => !q.hidden),
     chapters: state.chapters.filter((c) => c.status !== 'pendente'),
     log: state.log.filter((e) => canSeeLog(e, viewer)),

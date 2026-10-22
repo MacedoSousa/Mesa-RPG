@@ -2,8 +2,9 @@
  * Bestiário 3D: cada espécie tem aparência fixa (como raças de monstros num RPG de PC).
  * Humanoides usam os esqueletos do KayKit com cores e adornos; feras são criaturas procedurais.
  */
-import { MONSTERS } from '@mesa/shared';
-import { buildCreatureFigure, bullHead, cyclopsEye, featherTail, flameHair, glowingEyes, serpentTail, snakeHair, talons, tusks, wings, type CreatureSpec } from './creatures';
+import { MONSTERS, generateFigureRecipe, type FigureRecipe } from '@mesa/shared';
+import { bullHead, cyclopsEye, featherTail, flameHair, glowingEyes, rigHorns, serpentTail, snakeHair, talons, tusks, wings } from './creatures';
+import { buildRecipeCreature } from './creatureKit';
 import { buildRigFigure, skinCells, type AtlasChange, type Figure, type ProcPart, type RigParts, type RigSpec } from './figure';
 
 type Src = CanvasImageSource & { width: number; height: number };
@@ -91,20 +92,61 @@ const RIG_MONSTERS: Record<string, RigSpec> = {
   },
 };
 
-const CREATURES: Record<string, CreatureSpec> = {
-  cao_infernal: { kind: 'quadrupede', color: '#1c1a1f', accent: '#2c2930', eyes: '#ff2a00', scale: 1.15, embers: true },
-  cerbero: { kind: 'quadrupede', color: '#141216', accent: '#26222a', eyes: '#3bff8a', heads: 3, scale: 1.9, embers: true },
-  quimera: { kind: 'quadrupede', color: '#b88a4a', accent: '#8a6232', eyes: '#ffb000', mane: '#7a4a1a', goatHead: true, snakeTail: true, scale: 1.45 },
-  hidra_jovem: { kind: 'hidra', color: '#3f7a4a', accent: '#6fa86a', eyes: '#ffe066', heads: 5, scale: 1.25 },
-  aranha_automato: { kind: 'aranha', color: '#b8862e', accent: '#8a6420', eyes: '#3bd6ff', metal: true, scale: 0.85 },
-  telquine: { kind: 'foca', color: '#5a6f80', accent: '#3d4f5e', eyes: '#9be7ff', scale: 1.1 },
+/** Receita fixa de cada fera do bestiário (mesmo gerador da Oficina de bonecos). */
+const R = (base: FigureRecipe['base'], o: Partial<FigureRecipe>): FigureRecipe => ({ ...generateFigureRecipe(base, 'bestiario'), aura: 'nenhuma', spikes: false, mane: false, armor: false, wings: 'nenhuma', horns: 'nenhum', ...o });
+const CREATURES: Record<string, { recipe: FigureRecipe; extras?: { goatHead?: boolean } }> = {
+  cao_infernal: { recipe: R('quadrupede', { surface: 'pelo', color: '#1c1a1f', accent: '#2c2930', belly: '#3a3236', eyes: '#ff2a00', size: 1.15, glow: true, aura: 'brasas', tail: 'longa', heads: 1 }) },
+  cerbero: { recipe: R('quadrupede', { surface: 'pelo', color: '#141216', accent: '#26222a', belly: '#2e2830', eyes: '#3bff8a', size: 1.9, glow: true, aura: 'brasas', tail: 'serpente', heads: 3, spikes: false, mane: true }) },
+  quimera: { recipe: R('quadrupede', { surface: 'pelo', color: '#b88a4a', accent: '#7a4a1a', belly: '#e0c08a', eyes: '#ffb000', size: 1.45, glow: false, mane: true, tail: 'serpente', heads: 1 }), extras: { goatHead: true } },
+  hidra_jovem: { recipe: R('hidra', { surface: 'escamas', color: '#3f7a4a', accent: '#2a4a2e', belly: '#c8c27a', eyes: '#ffe066', heads: 5, size: 1.25, spikes: true, tail: 'longa', glow: false }) },
+  aranha_automato: { recipe: R('aranha', { surface: 'bronze', color: '#b8862e', accent: '#8a6420', belly: '#e8c98a', eyes: '#3bd6ff', size: 0.85, armor: true, tail: 'nenhuma', legs: 8, glow: true }) },
+  telquine: { recipe: R('marinho', { surface: 'couro', color: '#5a6f80', accent: '#3d4f5e', belly: '#c9d6dc', eyes: '#9be7ff', size: 1.1, spikes: true, tail: 'longa', glow: false }) },
 };
 
 /** Espécies com modelo 3D próprio (as demais usam um esqueleto genérico). */
 export const MONSTER_3D_KEYS = [...Object.keys(RIG_MONSTERS), ...Object.keys(CREATURES)];
 
+/** Boneco humanoide montado pela receita (esqueleto KayKit + adornos). */
+function rigFromRecipe(rec: FigureRecipe): RigSpec {
+  const outfitCells: [number, number][] = rec.body === 'mage' ? [[0, 1], [1, 1], [7, 1]] : rec.body === 'knight' ? [[0, 1], [2, 2]] : [[0, 1], [1, 1], [2, 2]];
+  const skeleton = rec.body.startsWith('skeleton') || rec.head === 'caveira';
+  const adorn: ((p: RigParts) => ProcPart | null | void)[] = [];
+  if (rec.head === 'touro') adorn.push(bullHead);
+  if (rec.head === 'ciclope') adorn.push((p) => cyclopsEye(p, rec.eyes));
+  if (rec.head === 'serpentes') adorn.push((p) => snakeHair(p, rec.accent));
+  if (rec.head === 'chamas') adorn.push(flameHair);
+  if (rec.horns !== 'nenhum' && rec.head !== 'touro') adorn.push((p) => rigHorns(p, rec.horns as 'chifres', rec.surface === 'bronze' ? '#d4a020' : '#e4d8bc'));
+  if (rec.wings === 'morcego' || rec.wings === 'penas') adorn.push((p) => wings(p, rec.wings as 'morcego', rec.accent, rec.belly));
+  if (rec.serpentLegs) adorn.push((p) => serpentTail(p, rec.color, { length: 2.4, thick: 0.28, segments: 10, belly: rec.belly }));
+  else if (rec.tail === 'serpente') adorn.push((p) => serpentTail(p, rec.accent, { length: 1.4, thick: 0.1, segments: 8 }));
+  else if (rec.tail === 'curta' || rec.tail === 'longa') adorn.push((p) => featherTail(p, rec.accent));
+  if (rec.glow || skeleton) adorn.push((p) => glowingEyes(p, rec.eyes));
+  return {
+    body: skeleton ? (rec.body === 'skeleton_minion' ? 'skeleton_minion' : 'skeleton_warrior') : rec.body,
+    headgear: false,
+    hideEyes: rec.head === 'ciclope',
+    hide: rec.serpentLegs ? /_Leg/ : undefined,
+    scale: { h: rec.size, b: rec.size * (rec.body === 'barbarian' ? 1.1 : 1) },
+    style: rec.body === 'mage' ? 'caster' : rec.body === 'rogue' ? 'monk' : rec.body === 'barbarian' ? 'brute' : undefined,
+    recolor: skeleton ? undefined : colors({ skin: rec.color, hair: rec.belly, eyes: rec.eyes, outfit: rec.accent, outfitCells }),
+    weapons: { mainHand: rec.weapon === 'nenhuma' ? null : rec.weapon, shield: rec.shield ? 'escudo_bronze' : null },
+    adorn: parts(...adorn),
+  } as RigSpec;
+}
+
+/** Monta qualquer receita da Oficina de bonecos. */
+export async function buildFigureFromRecipe(rec: FigureRecipe): Promise<Figure> {
+  if (rec.base === 'humanoide') return buildRigFigure(rigFromRecipe(rec));
+  return buildRecipeCreature(rec);
+}
+
+/** Receita para começar a editar a partir de uma espécie do bestiário. */
+export function defaultRecipeFor(key: string): FigureRecipe | null {
+  return CREATURES[key]?.recipe ?? null;
+}
+
 export async function buildMonsterFigure(key: string): Promise<Figure> {
-  if (CREATURES[key]) return buildCreatureFigure(CREATURES[key]);
+  if (CREATURES[key]) return buildRecipeCreature(CREATURES[key].recipe, CREATURES[key].extras);
   const spec = RIG_MONSTERS[key];
   if (spec) return buildRigFigure(spec);
   // Monstro sem visual próprio: esqueleto genérico, maior conforme o tamanho

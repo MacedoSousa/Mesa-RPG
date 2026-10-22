@@ -101,11 +101,11 @@ export function Tabs<T extends string>({ tabs, value, onChange, className }: { t
   );
 }
 
-export function Modal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
+export function Modal({ open, onClose, title, children, wide }: { open: boolean; onClose: () => void; title: string; children: ReactNode; wide?: boolean }) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-2 sm:items-center" onClick={onClose}>
-      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-slate-900 p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className={cx('max-h-[92vh] w-full overflow-y-auto', wide ? 'max-w-6xl' : 'max-w-lg', ' rounded-2xl border border-white/10 bg-slate-900 p-4 shadow-2xl')} onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-center justify-between">
           <h3 className="font-display text-xl text-amber-200">{title}</h3>
           <button onClick={onClose} className="rounded-lg px-2 text-2xl text-slate-400 hover:text-white" aria-label="Fechar">×</button>

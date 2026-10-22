@@ -15,6 +15,7 @@ function expireQuest(ctx: EngineContext, q: SideQuest) {
     const tile = tileAt(ctx.state.map, spawn.x, spawn.y);
     if (tile && isWalkableTile(tile) && !tokenAt(ctx.state, spawn.x, spawn.y)) {
       const tok = createMonsterToken(spawn.monsterKey, spawn.x, spawn.y, ctx.id('mon'), { hidden: spawn.hidden });
+      tok.figure = ctx.state.monsterLooks?.[spawn.monsterKey] ?? null;
       ctx.state.tokens.push(tok);
       ctx.log(`👹 ${tok.name} surge no mapa!`, { type: 'combate', visibility: spawn.hidden ? 'mestre' : 'publico' });
     } else {

@@ -4,7 +4,7 @@ import { isPortraitSpec } from '../portrait';
 import { getFigureAtlas, webglOk, type FigureAtlas } from './figureBaker';
 import type { Figure } from './figure';
 import { buildHeroFigure } from './heroKit';
-import { buildMonsterFigure } from './monsters3d';
+import { buildFigureFromRecipe, buildMonsterFigure } from './monsters3d';
 
 export { BAKE_STATES } from './figureBaker';
 export type { FigureAtlas } from './figureBaker';
@@ -18,6 +18,11 @@ function hash(s: string) {
 
 /** Chave (mesma aparência = mesma folha de sprites) e receita da figura do token. */
 export function figureFor(t: Token): { key: string; make: () => Promise<Figure> } | null {
+  // Visual próprio da Oficina de bonecos (vale para monstros e NPCs)
+  if (t.figure) {
+    const rec = t.figure;
+    return { key: `f:${hash(JSON.stringify(rec))}`, make: () => buildFigureFromRecipe(rec) };
+  }
   if (t.kind === 'monstro') {
     const k = t.monsterKey;
     if (!k) return null;

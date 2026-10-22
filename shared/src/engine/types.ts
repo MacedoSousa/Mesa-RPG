@@ -1,3 +1,4 @@
+import type { FigureRecipe } from '../content/figures';
 import type { Condition } from '../content/conditions';
 import type { DivinePower } from '../content/divinities';
 import type { DamageType } from '../content/items';
@@ -108,6 +109,8 @@ export interface Token {
   /** Retrato gerado (PortraitSpec serializada) para desenhar o rosto do herói. */
   face?: unknown;
   /** Dados para montar o boneco 3D do herói no mapa (classe, raça, deus e equipamento). */
+  /** Visual próprio feito na Oficina de bonecos (vale mais que o visual da espécie). */
+  figure?: FigureRecipe | null;
   look3d?: { classKey: string; race: string; divinity: string; equipment: Partial<Record<'mainHand' | 'offHand' | 'armor' | 'shield', string | null>>; inventory?: string[] };
 }
 
@@ -210,6 +213,13 @@ export interface PlayerInfo {
 
 export type Phase = 'exploracao' | 'combate';
 
+export interface SavedFigure {
+  id: string;
+  name: string;
+  recipe: FigureRecipe;
+  createdAt: number;
+}
+
 export interface TableState {
   schemaVersion: number;
   campaignId: string;
@@ -229,6 +239,10 @@ export interface TableState {
   options?: { monsterLoot?: boolean };
   /** Cena pronta carregada pelo Mestre (chave em SCENES). */
   sceneKey?: string | null;
+  /** Oficina de bonecos: bonecos salvos pelo Mestre (só ele recebe a lista). */
+  figures?: SavedFigure[];
+  /** Visual próprio de uma espécie nesta campanha (todos os tokens dela usam). */
+  monsterLooks?: Record<string, FigureRecipe>;
   log: LogEntry[];
   /** Incrementa a cada comando aplicado (ordem/ressincronização). */
   seq: number;

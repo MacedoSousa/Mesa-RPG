@@ -380,6 +380,21 @@ Cada herói ganha um retrato gerado (SVG em camadas, por semente): formato do ro
 - **Loot:** baús sorteados incluem equipamento com rank, e monstros derrotados podem deixar **espólio** (desligável).
 - **Rank no boneco 3D:** armas Heroicas ou melhores brilham na cor do rank.
 
+### 🧌 Oficina de bonecos (gerador de criaturas)
+
+Funciona como o gerador de mapas: escolha uma **base**, uma **semente** e clique em **✨ Gerar**. A mesma semente gera sempre o mesmo boneco.
+
+- **Bases:** fera de quatro patas, serpente, hidra, aranha/escorpião, ave gigante, criatura marinha, golem/autômato e humanoide.
+- **Superfícies** desenhadas por código, com relevo: pelo, escamas, couro, penas, pedra, bronze, osso, carapaça e lodo brilhante. A barriga fica mais clara que o dorso.
+- **Partes:** chifres (curvos, de bode, de touro, coroa), asas (morcego, penas, inseto), caudas (curta, longa, serpente com cabeça, ferrão, clava, chamas), espinhos, juba, armadura de bronze, várias cabeças e auras (brasas, névoa, faíscas, bolhas).
+- **Detalhes:** olhos com íris, pupila (redonda ou em fenda) e pálpebras que piscam, dentes, língua, garras e mandíbula que abre ao atacar.
+- **Humanoides:** corpo, cabeça (touro, ciclope, serpentes, chamas, caveira), arma, escudo e metade serpente.
+- **Usar:**
+  - **Usar na espécie:** todos daquele monstro na campanha ganham o visual.
+  - **Aplicar no token** selecionado.
+  - **Invocar no mapa** com as regras de qualquer monstro.
+- O visual não muda as regras. A biblioteca fica salva com a mesa, na aba **🧌 Bonecos**.
+
 ### Bonecos 3D no mapa e monstros por espécie
 
 - **Bestiário 3D:** cada espécie tem aparência fixa.
@@ -518,7 +533,7 @@ Conexão: `io(URL, { auth: { token: accessToken } })`. A sessão recupera evento
 Os comandos são validados com zod (`shared/src/engine/commands.ts`):
 
 - **Jogador:** `token.move`, `combat.attack`, `combat.attackTile`, `combat.action`, `combat.shove`, `combat.power`, `combat.endTurn`, `item.use`, `object.open`, `check.roll`, `dice.roll`, `chat.say`.
-- **Mestre (além dos acima):** `table.setPaused`, `chapter.*`, `monster.spawn`, `token.update`, `token.remove`, `combat.start`, `combat.end`, `combat.next`, `map.set`, `map.paint`, `map.element`, `map.damage`, `quest.*`, `player.pause`, `player.ban`, `affinity.adjust`, `combat.auto`, `token.damage`, `check.request`, `check.clear`, `party.rest`, `reward.grant`, `item.take`, `chest.place` (com `hidden`), `object.reveal`, `scene.load`, `table.narrate`, `adventure.load`, `map.generate`, `map.mood`.
+- **Mestre (além dos acima):** `table.setPaused`, `chapter.*`, `monster.spawn`, `token.update`, `token.remove`, `combat.start`, `combat.end`, `combat.next`, `map.set`, `map.paint`, `map.element`, `map.damage`, `quest.*`, `player.pause`, `player.ban`, `affinity.adjust`, `combat.auto`, `token.damage`, `check.request`, `check.clear`, `party.rest`, `reward.grant`, `item.take`, `chest.place` (com `hidden`), `object.reveal`, `figure.save`, `figure.delete`, `figure.assign`, `scene.load`, `table.narrate`, `adventure.load`, `map.generate`, `map.mood`.
 
 ---
 
