@@ -133,6 +133,16 @@ sudo ./scripts/instalar-servicos.sh
 - Se o banco demorar a subir, o servidor espera até 2 minutos antes de desistir.
 - Para desfazer: `--remover`.
 
+**Corrigir o `server/.env`** (faz backup antes):
+```bash
+DOMINIO=mesarpgweb.duckdns.org ./scripts/corrigir-env.sh
+```
+- Remove `\r` do Windows, aspas e espaços sobrando, e chaves repetidas.
+- Completa o que falta com o `.env.example`.
+- Troca os segredos JWT de exemplo por segredos fortes.
+- Libera o endereço do DuckDNS.
+- Testa o banco e, se não conectar, procura onde ele está.
+
 **Conferir depois de ligar:**
 ```bash
 ./scripts/verificar.sh
