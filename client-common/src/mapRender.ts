@@ -349,9 +349,75 @@ export interface Light {
 
 export interface Animated {
   node: Container;
-  kind: 'flicker' | 'pulse' | 'bob' | 'sway';
+  kind: 'flicker' | 'pulse' | 'bob' | 'sway' | 'custom';
   phase: number;
   base: number;
+  /** Animação própria (ex.: fogo): recebe o relógio em segundos. */
+  update?: (clock: number) => void;
+}
+
+/** Gota de chama com a base em (0,0), subindo até -h. */
+function flameShape(g: Graphics, w: number, h: number, color: number, alpha = 1) {
+  g.moveTo(-w, 0)
+    .bezierCurveTo(-w * 1.15, -h * 0.35, -w * 0.35, -h * 0.6, 0, -h)
+    .bezierCurveTo(w * 0.35, -h * 0.6, w * 1.15, -h * 0.35, w, 0)
+    .bezierCurveTo(w * 0.6, w * 0.5, -w * 0.6, w * 0.5, -w, 0)
+    .fill({ color, alpha });
+}
+
+/**
+ * Fogo do braseiro: três línguas de chama ancoradas na bacia, cada uma tremulando e
+ * balançando no seu ritmo, com brilho pulsando e faíscas subindo.
+ */
+function buildFire(x: number, y: number, phase: number, animated: Animated[]): Container {
+  const fire = new Container();
+  fire.position.set(x, y);
+  const glow = new Graphics().circle(0, -6, 17).fill({ color: 0xff8a2a, alpha: 0.22 }).circle(0, -5, 10).fill({ color: 0xffb04a, alpha: 0.25 });
+  glow.blendMode = 'add';
+  fire.addChild(glow);
+  const tongues: { node: Graphics; ph: number; sp: number; base: number }[] = [];
+  const specs: [number, number, number, number][] = [
+    // dx, largura, altura, cor
+    [-5, 4.5, 13, 0xe8461a],
+    [5, 4.5, 12, 0xe8461a],
+    [0, 7, 20, 0xff6a14],
+    [0, 5, 15, 0xffa12a],
+    [0, 3, 9, 0xffe27a],
+  ];
+  specs.forEach(([dx, w, h, color], i) => {
+    const t = new Graphics();
+    flameShape(t, w, h, color, i < 2 ? 0.9 : 1);
+    t.position.set(dx, 0);
+    fire.addChild(t);
+    tongues.push({ node: t, ph: phase + i * 1.7, sp: 9 + i * 2.3, base: dx });
+  });
+  // Faíscas que sobem, somem e recomeçam
+  const sparks: { node: Graphics; off: number; dx: number; sp: number }[] = [];
+  for (let i = 0; i < 4; i++) {
+    const sp = new Graphics().circle(0, 0, 1.2).fill(0xffd27a);
+    sp.blendMode = 'add';
+    fire.addChild(sp);
+    sparks.push({ node: sp, off: (phase + i * 0.27) % 1, dx: (i - 1.5) * 3, sp: 0.55 + i * 0.12 });
+  }
+  animated.push({
+    node: fire, kind: 'custom', phase, base: 1,
+    update: (clock) => {
+      for (const tg of tongues) {
+        const n = Math.sin(clock * tg.sp + tg.ph) * 0.5 + Math.sin(clock * tg.sp * 1.9 + tg.ph * 2) * 0.3;
+        tg.node.scale.y = 1 + n * 0.22;
+        tg.node.scale.x = 1 - n * 0.08;
+        tg.node.skew.x = Math.sin(clock * 2.1 + tg.ph) * 0.12 + Math.sin(clock * 5.3 + tg.ph) * 0.05;
+        tg.node.x = tg.base + Math.sin(clock * 3.7 + tg.ph) * 0.6;
+      }
+      glow.alpha = 0.8 + Math.sin(clock * 7 + phase) * 0.12 + Math.sin(clock * 13 + phase) * 0.08;
+      for (const s of sparks) {
+        const t = (clock * s.sp + s.off) % 1;
+        s.node.position.set(s.dx + Math.sin(t * 9 + s.off * 20) * 3, -6 - t * 24);
+        s.node.alpha = t < 0.15 ? t / 0.15 : 1 - t;
+      }
+    },
+  });
+  return fire;
 }
 
 export interface StaticLayers {
@@ -603,12 +669,13 @@ function drawObject(tile: Tile, px: number, py: number, animated: Animated[], li
       g.circle(cx, cy - 15, 6).fill(0xd9d4c7).stroke({ width: 1, color: 0x6a6458 });
       break;
     case 'braseiro': {
-      g.poly([cx - 12, cy, cx + 12, cy, cx + 7, cy + 9, cx - 7, cy + 9]).fill(0x6b5a40).stroke({ width: 1.5, color: 0x2a2010 });
-      const flame = new Graphics();
-      flame.ellipse(cx, cy - 6, 8, 11).fill(0xff7a1a);
-      flame.ellipse(cx, cy - 4, 4.5, 7).fill(0xffe066);
-      c.addChild(flame);
-      animated.push({ node: flame, kind: 'flicker', phase: cellHash(x, y, 1) * 6.28, base: 1 });
+      // Tripé e bacia de bronze
+      g.moveTo(cx - 9, cy + 15).lineTo(cx - 5, cy + 5).moveTo(cx + 9, cy + 15).lineTo(cx + 5, cy + 5).moveTo(cx, cy + 16).lineTo(cx, cy + 6).stroke({ width: 2.5, color: 0x3a2a14 });
+      g.poly([cx - 13, cy - 1, cx + 13, cy - 1, cx + 8, cy + 7, cx - 8, cy + 7]).fill(0x7a5a30).stroke({ width: 1.5, color: 0x2a1a08 });
+      g.rect(cx - 13, cy - 2, 26, 3).fill(0x9a7440);
+      // Brasas na bacia
+      for (let k = 0; k < 5; k++) g.circle(cx - 8 + k * 4, cy - 2 + (k % 2), 2.6).fill(k % 2 ? 0xff7a1a : 0xc2410c);
+      c.addChild(buildFire(cx, cy - 2, cellHash(x, y, 1) * 6.28, animated));
       lights.push({ x: x + 0.5, y: y + 0.5, radius: 3.2, color: 0xffa040, flicker: true });
       break;
     }

@@ -181,7 +181,9 @@ export function MapCanvas({ state, selectedTokenId, highlights, focusTokenId, on
         disp.y = (clock * 9) % 256;
         for (const a of animRef.current) {
           if (a.node.destroyed) continue;
-          if (a.kind === 'flicker') {
+          if (a.update) {
+            a.update(clock);
+          } else if (a.kind === 'flicker') {
             a.node.scale.y = 0.85 + Math.sin(clock * 11 + a.phase) * 0.12 + Math.sin(clock * 23 + a.phase) * 0.05;
             a.node.alpha = 0.85 + Math.sin(clock * 17 + a.phase) * 0.15;
           } else if (a.kind === 'pulse') {
