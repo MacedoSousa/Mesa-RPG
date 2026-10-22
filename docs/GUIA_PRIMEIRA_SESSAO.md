@@ -14,11 +14,12 @@ A aventura pronta *O Ladrão de Raios* já vem dividida em **cenas**. Cada cena 
 
 ## 1. Antes de chamar a família (15 minutos)
 
-1. Abra a mesa pelo **Host** e mostre o **QR code** (🎟️ no topo) para cada jogador entrar pelo celular.
-2. Cada jogador cria o herói no celular. Ajude quem tiver dúvida; o assistente explica cada passo.
-3. Na aba **🎬 Roteiro** (a primeira à esquerda), escolha o **capítulo 1** e clique em **Fuga na tempestade**.
-4. Leia a cena inteira **para você**, com calma, antes de carregar. São 2 minutos.
-5. Clique em **🎬 Carregar cena no mapa**. Pronto: mapa, Minotauro, baús e quests aparecem.
+1. No Host, confira se o botão **🩺** no topo diz **Tudo ok**. Se não disser, clique nele para ver o que falta (banco, imagens, IA…).
+2. Abra a mesa pelo **Host** e mostre o **QR code** (🎟️ no topo) para cada jogador entrar pelo celular.
+3. Cada jogador cria o herói no celular. Ajude quem tiver dúvida; o assistente explica cada passo.
+4. Na aba **🎬 Roteiro** (a primeira à esquerda), escolha o **capítulo 1** e clique em **Fuga na tempestade**.
+5. Leia a cena inteira **para você**, com calma, antes de carregar. São 2 minutos.
+6. Clique em **🎬 Carregar cena no mapa**. Pronto: mapa, Minotauro, baús e quests aparecem.
 
 > 💡 Gere a arte dos monstros (aba 🎨 Arte) **antes** do dia do jogo. Durante a sessão, a placa de vídeo fica livre para o mapa.
 

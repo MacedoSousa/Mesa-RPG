@@ -112,6 +112,43 @@ O Vite encaminha `/api` e `/socket.io` para o servidor, então os cookies e o We
 - O acesso é HTTP puro na rede local. O jogo funciona normalmente, mas o navegador não permite "instalar como app" (PWA), porque isso exige HTTPS.
 - **Jogadores fora de casa:** use um túnel como [Tailscale](https://tailscale.com) (cada jogador instala) ou o Cloudflare Tunnel. Teste o WebSocket antes da sessão.
 
+## Ligar sozinho e conferir que tudo carregou
+
+Tudo o que importa fica guardado em disco e volta ao religar o PC:
+
+| O quê | Onde fica |
+|---|---|
+| Contas, heróis, campanhas, mapas, saves | Banco PostgreSQL (volume do Docker `mesa_pgdata` ou o PostgreSQL do Ubuntu) |
+| Estado da mesa no meio da sessão | Save automático a cada 60 s e ao desligar (o servidor salva ao receber o sinal de desligar) |
+| Arte dos monstros e mapas pintados | `server/data/art/` |
+| Configurações | `server/.env` |
+| Modelos da IA | `~/ComfyUI/models/` |
+
+**Ligar junto com o PC (Ubuntu):**
+```bash
+sudo ./scripts/instalar-servicos.sh
+```
+- Cria os serviços `mesa-rpg` e `comfyui` (este se houver `~/ComfyUI`).
+- Liga o banco (Docker ou PostgreSQL) no boot e reinicia o que cair.
+- Se o banco demorar a subir, o servidor espera até 2 minutos antes de desistir.
+- Para desfazer: `--remover`.
+
+**Conferir depois de ligar:**
+```bash
+./scripts/verificar.sh
+DOMINIO=mesarpgweb.duckdns.org ./scripts/verificar.sh   # confere também o DuckDNS
+```
+- O script espera o servidor responder e mostra ✅/⚠️/❌ para:
+  - serviços;
+  - banco e estrutura do banco;
+  - contas e heróis, e o último save;
+  - `.env`;
+  - imagens;
+  - espaço em disco;
+  - telas;
+  - IA.
+- A mesma checagem aparece no log do servidor ao ligar (`journalctl -u mesa-rpg -n 30`) e no botão **🩺** do topo do Host.
+
 ---
 
 ## Arquitetura

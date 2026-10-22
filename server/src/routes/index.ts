@@ -1,4 +1,5 @@
-import { Router } from 'express';
+import { systemCheck } from '../services/healthService';
+import { Router, type NextFunction, type Request, type Response } from 'express';
 import { AuthController } from '../controllers/authController';
 import { CampaignController, HostController } from '../controllers/campaignController';
 import { CharacterController, RulesController } from '../controllers/characterController';
@@ -15,6 +16,15 @@ export function buildRoutes(opts: { authRateLimit?: boolean } = {}) {
     const db = await sequelize.query('SELECT 1').then(() => 'ok', (e: Error) => `erro: ${e.message}`);
     res.status(db === 'ok' ? 200 : 503).json({ status: db === 'ok' ? 'ok' : 'degradado', database: db, service: 'mesa-rpg', time: new Date().toISOString() });
   });
+  // Checagem completa (banco, configs, imagens, IA, saves): só o Mestre ou o próprio PC
+  const isLocal = (req: Request) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress ?? '');
+  const localOrMaster = [
+    (req: Request, res: Response, next: NextFunction) => (isLocal(req) ? next('route') : next()),
+    requireAuth, requireRole('MASTER'),
+  ];
+  const detail = async (_req: Request, res: Response) => res.json(await systemCheck());
+  r.get('/health/detalhe', ...localOrMaster, detail);
+  r.get('/health/detalhe', detail); // só chega aqui quem é local (next('route'))
   r.get('/rules', RulesController.catalog);
   r.get('/rules/maps/:key', RulesController.presetMap);
 

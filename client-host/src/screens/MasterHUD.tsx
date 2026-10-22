@@ -14,6 +14,40 @@ import { toolLabel, type Tool } from '../tools';
 
 type Panel = 'roteiro' | 'combate' | 'testes' | 'capitulos' | 'quests' | 'monstros' | 'arte' | 'jogadores' | 'mapa' | 'saves';
 
+interface HealthCheck { key: string; label: string; level: 'ok' | 'aviso' | 'erro'; detail: string }
+
+/** 🩺 Checagem do sistema: banco, configs, imagens, IA, saves (útil depois de religar o PC). */
+function HealthBadge() {
+  const [data, setData] = useState<{ ok: boolean; checks: HealthCheck[] } | null>(null);
+  const [open, setOpen] = useState(false);
+  const load = () => api<{ ok: boolean; checks: HealthCheck[] }>('/health/detalhe').then(setData).catch(() => setData({ ok: false, checks: [{ key: 'api', label: 'Servidor', level: 'erro', detail: 'Não respondeu' }] }));
+  useEffect(() => {
+    void load();
+    const t = setInterval(() => void load(), 60_000);
+    return () => clearInterval(t);
+  }, []);
+  const warn = data?.checks.some((c) => c.level === 'aviso');
+  const icon = { ok: '✅', aviso: '⚠️', erro: '❌' } as const;
+  return (
+    <>
+      <button onClick={() => { setOpen(true); void load(); }} className={cx('rounded-lg px-2 py-1 text-sm', !data ? 'bg-white/5' : !data.ok ? 'bg-rose-500/20 text-rose-100' : warn ? 'bg-amber-500/15 text-amber-100' : 'bg-emerald-500/15 text-emerald-100')} title="Checagem do sistema">
+        🩺 {!data ? '…' : !data.ok ? 'Problema' : warn ? 'Ok, com avisos' : 'Tudo ok'}
+      </button>
+      <Modal open={open} onClose={() => setOpen(false)} title="🩺 Checagem do sistema">
+        <div className="space-y-2">
+          {data?.checks.map((c) => (
+            <div key={c.key} className={cx('rounded-lg p-2 text-sm', c.level === 'erro' ? 'bg-rose-500/15' : c.level === 'aviso' ? 'bg-amber-500/10' : 'bg-white/5')}>
+              <p className="font-semibold">{icon[c.level]} {c.label}</p>
+              <p className="text-xs text-slate-300">{c.detail}</p>
+            </div>
+          ))}
+          <Button size="sm" variant="subtle" onClick={() => void load()}>🔄 Checar de novo</Button>
+        </div>
+      </Modal>
+    </>
+  );
+}
+
 export function MasterHUD({ campaignId }: { campaignId: string }) {
   const { state, status, connect, disconnect, send } = useTable();
   const [panel, setPanel] = useState<Panel>('roteiro');
@@ -121,6 +155,7 @@ export function MasterHUD({ campaignId }: { campaignId: string }) {
         <Badge color={state.phase === 'combate' ? 'rose' : 'emerald'}>{state.phase === 'combate' ? `⚔️ Combate · rodada ${combat?.round}` : '🧭 Exploração'}</Badge>
         {combat && <Badge color="amber">Turno: {currentName}</Badge>}
         <span className="flex-1" />
+        <HealthBadge />
         <Badge color={status === 'conectado' ? 'emerald' : 'amber'}>{status}</Badge>
         <span className="text-sm text-slate-400">{Object.values(state.players).filter((p) => p.connected).length} jogador(es) online</span>
         <Button size="sm" variant={state.paused ? 'gold' : 'subtle'} onClick={() => void send({ type: 'table.setPaused', paused: !state.paused })}>{state.paused ? '▶️ Retomar' : '⏸️ Pausar mesa'}</Button>

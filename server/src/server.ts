@@ -8,6 +8,7 @@ import { tableManager } from './game/TableManager';
 import { createApp } from './app';
 import { createSocketServer } from './sockets';
 import { artService } from './services/artService';
+import { logSystemCheck } from './services/healthService';
 import { EVENTS } from '@mesa/shared';
 
 async function bootstrap() {
@@ -33,6 +34,7 @@ async function bootstrap() {
       ? `   Código de Mestre (para outra conta virar Mestre): ${env.MASTER_INVITE_CODE}`
       : '   Código de Mestre: não definido (MASTER_INVITE_CODE no server/.env)');
     console.log('');
+    void logSystemCheck().catch((e) => console.error('checagem', e));
   });
 
   let closing = false;
